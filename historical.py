@@ -425,6 +425,7 @@ def good_pairing(hist, students, tutors):
     No attempt was made to make this efficient.
     """
     by_attendance = sorted(students,
+                           reverse=True,
                            key = lambda s: len(hist.get_matches(student=s)))
     pairing = []
     for student in by_attendance:
