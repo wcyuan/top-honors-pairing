@@ -39,7 +39,17 @@ def main():
     opts = getopts()
     hist = HistoricalData.read_all_data()
     logging.debug(hist.to_csv())
-    score_historical(hist, opts.date, opts.session)
+    logging.getLogger().setLevel(logging.DEBUG)
+    print score_historical(hist, opts.date, opts.session)
+    logging.getLogger().setLevel(logging.WARN)
+    actual = hist.get_pairing(opts.date, opts.session)
+
+    best = good_historical_score(hist, opts.date, opts.session)
+    logging.getLogger().setLevel(logging.DEBUG)
+    print score(best, hist.get_data_before(opts.date, opts.session))
+    print best
+
+    diff_pairings(actual, best)
 
 def getopts():
     parser = optparse.OptionParser()
@@ -295,6 +305,14 @@ class HistoricalData(object):
                     and any([s.student == student1 for s in students])
                     and any([s.student == student2 for s in students]))]
 
+    @property
+    def all_students(self):
+        return sorted(set([d.student for d in self.data]))
+
+    @property
+    def all_tutors(self):
+        return sorted(set([d.tutor for d in self.data]))
+
 # --------------------------------------------------------------------
 
 def score(pairing,
@@ -358,7 +376,7 @@ def score(pairing,
         n_students = len(by_tutor[tutor])
         if n_students < 2:
             continue
-        points_multiple_students = (n_students - 1) * penalty_multiple_students
+        points_multiple_students = (n_students - 1)**2 * penalty_multiple_students
         score -= points_multiple_students
         logging.debug("Score %s: Decreasing score by %s because %s is working "
                       "with %s students: %s",
@@ -391,7 +409,54 @@ def score(pairing,
 def score_historical(hist, date, session):
     actual = hist.get_pairing(date, session)
     past_data = hist.get_data_before(date, session)
-    print score(actual, past_data)
+    return score(actual, past_data)
+
+def good_pairing(hist, students, tutors):
+    """
+    Start with an empty pairing.
+    Sort the students by their attendance record.
+    For each student:
+      Calculate the score from adding (tutor, student) to the pairing
+      for each tutor.  Take the tutor that results in the highest score.
+
+    This is not guaranteed to result in the best pairing, but it will
+    usually result in a pretty good one.
+
+    No attempt was made to make this efficient.
+    """
+    by_attendance = sorted(students,
+                           key = lambda s: len(hist.get_matches(student=s)))
+    pairing = []
+    for student in by_attendance:
+        best_score = None
+        best_pair = None
+        for tutor in tutors:
+            this_score = score(pairing + [(tutor, student)], hist)
+            if best_score is None or this_score > best_score:
+                best_score = this_score
+                best_pair = (tutor, student)
+        pairing.append(best_pair)
+    return pairing
+
+def good_historical_score(hist, date, session):
+    actual = hist.get_pairing(date, session)
+    students = set([p[1] for p in actual])
+    tutors = set([p[0] for p in actual if p[0].strip() != ''])
+    past_data = hist.get_data_before(date, session)
+    return good_pairing(past_data, students, tutors)
+
+def diff_pairings(pairing1, pairing2):
+    by_student1 = dict((s, t) for (t, s) in pairing1)
+    by_student2 = dict((s, t) for (t, s) in pairing2)
+    for student in by_student1:
+        if student not in by_student2:
+            print "-{0}".format(student)
+        elif by_student1[student] != by_student2[student]:
+            print "{0}: {1} -> {2}".format(student, by_student1[student],
+                                           by_student2[student])
+    for student in by_student2:
+        if student not in by_student1:
+            print "+{0}".format(student)
 
 # --------------------------------------------------------------------
 
