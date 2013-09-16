@@ -39,9 +39,7 @@ def main():
     opts = getopts()
     hist = HistoricalData.read_all_data()
     logging.debug(hist.to_csv())
-    actual = hist.get_pairing(opts.date, opts.session)
-    past_data = hist.get_data_before(opts.date, opts.session)
-    print score(actual, past_data)
+    score_historical(hist, opts.date, opts.session)
 
 def getopts():
     parser = optparse.OptionParser()
@@ -389,6 +387,11 @@ def score(pairing,
                         score -= penalty_avoid_student
                         break
     return score
+
+def score_historical(hist, date, session):
+    actual = hist.get_pairing(date, session)
+    past_data = hist.get_data_before(date, session)
+    print score(actual, past_data)
 
 # --------------------------------------------------------------------
 
