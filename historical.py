@@ -24,33 +24,48 @@ HistoricalData is the set of all past Pairings.
 from __future__ import absolute_import, division, with_statement
 
 import collections
-import optparse
 import itertools
+import logging
+import optparse
 import re
 
 # -------------------------------------------------------
 
+logging.basicConfig(format='[%(asctime)s '
+                    '%(funcName)s:%(lineno)s %(levelname)-5s] '
+                    '%(message)s')
+
 def main():
+    opts = getopts()
     hist = HistoricalData.read_all_data()
-    #print hist.to_csv()
-
-    date = 20130413
-    session = 'am_purple'
-
-    actual = hist.get_pairing(date, session)
-    #print actual
-    past_data = hist.get_data_before(date, session)
+    logging.debug(hist.to_csv())
+    actual = hist.get_pairing(opts.date, opts.session)
+    past_data = hist.get_data_before(opts.date, opts.session)
     print score(actual, past_data)
 
 def getopts():
     parser = optparse.OptionParser()
     parser.add_option('--date',
                       type=int,
-                      default=20130403)
+                      default=20130413)
     parser.add_option('--session',
                       default='am_purple')
-    args = parser.parse()
-    return args
+    parser.add_option('--verbose',
+                      action='store_true',
+                      help='set log level to DEBUG')
+    parser.add_option('--log_level',
+                      help='set the log level')
+    (opts, args) = parser.parse_args()
+
+    if opts.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if opts.log_level is not None:
+        level = getattr(logging, opts.log_level.upper())
+        logging.getLogger().setLevel(level)
+        logging.info("Setting log level to %s", level)
+        
+    return opts
 
 # -------------------------------------------------------
 
@@ -325,25 +340,52 @@ def score(pairing,
     for (tutor, student) in pairing:
         by_tutor[tutor].append(student)
         prev = hist.get_matches(tutor=tutor, student=student)
-        score += len(prev) * award_past_work
+        points_past_work = len(prev) * award_past_work
+        score += points_past_work
+        if points_past_work > 0:
+            logging.debug("Score %s: Increasing score by %s because %s and %s "
+                          "have worked together %s other times",
+                          score, points_past_work, tutor, student, len(prev))
         if any([p.avoid_tutor for p in prev]):
+            logging.debug("Score %s: Decreasing score by %s because %s should "
+                          "avoid tutor %s",
+                          score, penalty_avoid_tutor, student, tutor)
             score -= penalty_avoid_tutor
         if any([p.good_match for p in prev]):
+            logging.debug("Score %s: Increasing score by %s because %s is a "
+                          "good fit with tutor %s",
+                          score, award_good_match, student, tutor)
             score += award_good_match
     for tutor in by_tutor:
         n_students = len(by_tutor[tutor])
         if n_students < 2:
             continue
-        score -= (n_students - 1) * penalty_multiple_students
+        points_multiple_students = (n_students - 1) * penalty_multiple_students
+        score -= points_multiple_students
+        logging.debug("Score %s: Decreasing score by %s because %s is working "
+                      "with %s students: %s",
+                      score, points_multiple_students, tutor, n_students,
+                      by_tutor[tutor])
         if any([p.tutor_on_own for p in hist.get_matches(tutor=tutor)]):
+            logging.debug("Score %s: Decreasing score by %s because tutor %s "
+                          "should work alone",
+                          score, penalty_tutor_on_own, tutor)
             score -= penalty_tutor_on_own
         if any([p.on_own for p in hist.get_matches(student=student)]):
+            logging.debug("Score %s: Decreasing score by %s because student %s "
+                          "should work alone",
+                          score, penalty_student_on_own, student)
             score -= penalty_student_on_own
         for ii in xrange(n_students):
             for jj in xrange(ii+1, n_students):
                 for pairs in hist.get_student_pairings(by_tutor[tutor][ii],
                                                        by_tutor[tutor][jj]):
                     if any([p.avoid_student for p in pairs]):
+                        logging.debug("Score %s: Decreasing score by %s "
+                                      "because student %s "
+                                      "should not work with student %s",
+                                      score, penalty_avoid_student,
+                                      by_tutor[tutor][ii], by_tutor[tutor][jj])
                         score -= penalty_avoid_student
                         break
     return score
