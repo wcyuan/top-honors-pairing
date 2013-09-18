@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Functions to deal with historical data in Top Honors pairing
 
@@ -16,7 +17,7 @@ A Pairing is a set of Pairs that matches all the students to tutors
 for a particular week.  The goal of the Pairing Algorithm is to find
 the best Pairing for a week, given the Pairings for all previous weeks.
 
-HistoricalData is the set of all past Pairings.  
+HistoricalData is the set of all past Pairings.
 
 """
 # -------------------------------------------------------
@@ -38,18 +39,53 @@ logging.basicConfig(format='[%(asctime)s '
 def main():
     opts = getopts()
     hist = HistoricalData.read_all_data()
-    logging.debug(hist.to_csv())
-    logging.getLogger().setLevel(logging.DEBUG)
-    print score_historical(hist, opts.date, opts.session)
+
+    given_params = dict((k, getattr(opts, k))
+                        for k in ScoreParams.PARAMS
+                        if hasattr(opts, k))
+    params = ScoreParams(**given_params)
+    run_pairing_code(hist, opts.session, opts.date,
+                     params,
+                     opts.verbose)
+
+def run_pairing_code(hist, session, date, params, show_details):
+    print "Calculating ... "
+    print
+
+    if show_details:
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.WARN)
+    actual = hist.get_pairing(date, session)
+    (actual_score, actual_ann) = score_historical(hist, date, session, params)
     logging.getLogger().setLevel(logging.WARN)
-    actual = hist.get_pairing(opts.date, opts.session)
 
-    best = good_historical_score(hist, opts.date, opts.session)
-    logging.getLogger().setLevel(logging.DEBUG)
-    print score(best, hist.get_data_before(opts.date, opts.session))
-    print best
+    best = good_historical_score(hist, date, session, params)
+    if show_details:
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.WARN)
+    (best_score, best_ann) = get_score(best,
+                                       hist.get_data_before(date, session))
+    logging.getLogger().setLevel(logging.WARN)
 
-    diff_pairings(actual, best)
+    print " ... Done"
+    print
+
+    print "Score for the actual pairing used: ", actual_score
+    print "Score for the suggested pairing: ", best_score
+    print
+    print "Here is the actual pairing used on ", date, session
+    print
+    print_pairing(actual, actual_ann)
+    print
+    print "Here is the suggested pairing:"
+    print
+    print_pairing(best, best_ann)
+    print
+    print "Here are the differences:"
+    print
+    diff_pairings(actual, best, actual_ann, best_ann)
 
 def getopts():
     parser = optparse.OptionParser()
@@ -63,16 +99,21 @@ def getopts():
                       help='set log level to DEBUG')
     parser.add_option('--log_level',
                       help='set the log level')
+    for param in ScoreParams.PARAMS:
+        parser.add_option('--' + param,
+                          default=ScoreParams.PARAMS[param])
+
     (opts, args) = parser.parse_args()
 
-    if opts.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    if len(args) > 0:
+        raise ValueError("Did not expect to get any arguments: {0}".
+                         format(args))
 
     if opts.log_level is not None:
         level = getattr(logging, opts.log_level.upper())
         logging.getLogger().setLevel(level)
         logging.info("Setting log level to %s", level)
-        
+
     return opts
 
 # -------------------------------------------------------
@@ -159,7 +200,7 @@ class HistoricalData(object):
         else:
             year = 2012
         return int('{0:04d}{1:02d}{2:02d}'.format(year, month, day))
-    
+
     @classmethod
     def parse_mark(cls, mark, student):
         """
@@ -252,9 +293,9 @@ class HistoricalData(object):
                         # Sanity Check
                         if any([student.lower().find(mark.lower()) >= 0
                                 for mark in ('OO', ' X ', ':-)', '*')]):
-                            print 'Missed one? "{0}" -- {1}, {2} {3} {4} {5}'.format(
-                                student, val, session, tutor_first,
-                                tutor_last, date)
+                            logging.info('Missed one? "{0}" -- {1}, {2} {3} {4} {5}'.
+                                         format(student, val, session,
+                                                tutor_first, tutor_last, date))
                         self.data.append(Pair(date, session, tutor_first,
                                               tutor_last, student,
                                               tutor_on_own, on_own,
@@ -316,15 +357,27 @@ class HistoricalData(object):
 
 # --------------------------------------------------------------------
 
-def score(pairing,
-          hist,
-          award_past_work=1,
-          award_good_match=5,
-          penalty_avoid_tutor=20,
-          penalty_multiple_students=1,
-          penalty_avoid_student=20,
-          penalty_tutor_on_own=10,
-          penalty_student_on_own=10):
+class ScoreParams(object):
+    PARAMS = {'award_past_work'          : 1,
+              'award_good_match'         : 5,
+              'penalty_avoid_tutor'      : 20,
+              'penalty_multiple_students': 1,
+              'penalty_avoid_student'    : 20,
+              'penalty_tutor_on_own'     : 10,
+              'penalty_student_on_own'   : 10}
+
+    def __init__(self, **kwargs):
+        for param in self.PARAMS:
+            val = kwargs[param] if param in kwargs else self.PARAMS[param]
+            setattr(self, param, val)
+        for kwarg in kwargs:
+            if kwarg not in self.PARAMS:
+                raise ValueError("Bad score parameter {0}, "
+                                 "should be one of {1}".
+                                 format(kwarg,
+                                        ', '.join(self.PARAMS)))
+
+def get_score(pairing, hist, params=None, **kwargs):
     """
     For each student-tutor pair:
 
@@ -337,62 +390,94 @@ def score(pairing,
 
     For each tutor that is paired with more than one student: Let's
     say there are S students in the group.
-    
+
     - Subtract S-1 from the score (if we have enough tutors, we want to
       encourage one-on-one tutoring).
 
     - If the students have ever been marked incompatible with each
       other, subtract 20.
-    
+
     - If any student or the tutor have been marked as 'on own',
       subtract 10.
-    
+
     - If any of the students are scheduled to be working on different
       subjects, subtract 5.
 
     - If any of the students are not the same grade, subtract 2.
     """
+    if params is None:
+        params = ScoreParams(**kwargs)
+
     by_tutor = collections.defaultdict(list)
     score = 0
+    annotations = collections.defaultdict(list)
     for (tutor, student) in pairing:
         by_tutor[tutor].append(student)
         prev = hist.get_matches(tutor=tutor, student=student)
-        points_past_work = len(prev) * award_past_work
+        points_past_work = len(prev) * params.award_past_work
         score += points_past_work
         if points_past_work > 0:
             logging.debug("Score %s: Increasing score by %s because %s and %s "
                           "have worked together %s other times",
                           score, points_past_work, tutor, student, len(prev))
+            annotations[(tutor, student)].append(
+                (points_past_work,
+                 "+{0}*{1} because {2} and {3} have worked together".
+                 format(len(prev), params.award_past_work, tutor, student)))
         if any([p.avoid_tutor for p in prev]):
             logging.debug("Score %s: Decreasing score by %s because %s should "
                           "avoid tutor %s",
-                          score, penalty_avoid_tutor, student, tutor)
-            score -= penalty_avoid_tutor
+                          score, params.penalty_avoid_tutor, student, tutor)
+            score -= params.penalty_avoid_tutor
+            annotations[(tutor, student)].append(
+                (-params.penalty_avoid_tutor,
+                  "-{0} because {1} and {2} shouldn't work together".
+                  format(params.penalty_avoid_tutor, tutor, student)))
         if any([p.good_match for p in prev]):
             logging.debug("Score %s: Increasing score by %s because %s is a "
                           "good fit with tutor %s",
-                          score, award_good_match, student, tutor)
-            score += award_good_match
+                          score, params.award_good_match, student, tutor)
+            score += params.award_good_match
+            annotations[(tutor, student)].append(
+                (params.award_good_match,
+                 "+{0} because {1} and {2} are a good match".
+                 format(params.award_good_match, tutor, student)))
     for tutor in by_tutor:
         n_students = len(by_tutor[tutor])
         if n_students < 2:
             continue
-        points_multiple_students = (n_students - 1)**2 * penalty_multiple_students
+        # Arbitrarily attach annotations to the first student
+        student1 = by_tutor[tutor][0]
+        points_multiple_students = ((n_students - 1)**2 *
+                                    params.penalty_multiple_students)
         score -= points_multiple_students
         logging.debug("Score %s: Decreasing score by %s because %s is working "
                       "with %s students: %s",
                       score, points_multiple_students, tutor, n_students,
                       by_tutor[tutor])
+        annotations[(tutor, student1)].append(
+            (-points_multiple_students,
+              "-{0} because {1} is working with {2} students".
+              format(points_multiple_students, tutor, n_students)))
         if any([p.tutor_on_own for p in hist.get_matches(tutor=tutor)]):
             logging.debug("Score %s: Decreasing score by %s because tutor %s "
                           "should work alone",
-                          score, penalty_tutor_on_own, tutor)
-            score -= penalty_tutor_on_own
-        if any([p.on_own for p in hist.get_matches(student=student)]):
-            logging.debug("Score %s: Decreasing score by %s because student %s "
-                          "should work alone",
-                          score, penalty_student_on_own, student)
-            score -= penalty_student_on_own
+                          score, params.penalty_tutor_on_own, tutor)
+            score -= params.penalty_tutor_on_own
+            annotations[(tutor, student1)].append(
+                (-params.penalty_tutor_on_own,
+                  "-{0} because tutor {1} should only work on own".
+                  format(params.penalty_tutor_on_own, tutor)))
+        for student in by_tutor[tutor]:
+            if any([p.on_own for p in hist.get_matches(student=student)]):
+                logging.debug("Score %s: Decreasing score by %s because "
+                              "student %s should work alone",
+                              score, params.penalty_student_on_own, student)
+                score -= params.penalty_student_on_own
+                annotations[(tutor, student)].append(
+                    (-params.penalty_tutor_on_own,
+                      "-{0} because student {1} should only work on own".
+                      format(params.penalty_tutor_on_own, student)))
         for ii in xrange(n_students):
             for jj in xrange(ii+1, n_students):
                 for pairs in hist.get_student_pairings(by_tutor[tutor][ii],
@@ -401,18 +486,25 @@ def score(pairing,
                         logging.debug("Score %s: Decreasing score by %s "
                                       "because student %s "
                                       "should not work with student %s",
-                                      score, penalty_avoid_student,
+                                      score, params.penalty_avoid_student,
                                       by_tutor[tutor][ii], by_tutor[tutor][jj])
-                        score -= penalty_avoid_student
+                        score -= params.penalty_avoid_student
+                        annotations[(tutor, by_tutor[tutor][ii])].append(
+                            (-params.penalty_avoid_student,
+                              "-{0} because students {1} and {2} should "
+                              "not work with each other".
+                              format(pararms.penalty_avoid_student,
+                                     by_tutor[tutor][ii],
+                                     by_tutor[tutor][jj])))
                         break
-    return score
+    return score, annotations
 
-def score_historical(hist, date, session):
+def score_historical(hist, date, session, params=None):
     actual = hist.get_pairing(date, session)
     past_data = hist.get_data_before(date, session)
-    return score(actual, past_data)
+    return get_score(actual, past_data, params)
 
-def good_pairing(hist, students, tutors):
+def good_pairing(hist, students, tutors, params=None):
     """
     Start with an empty pairing.
     Sort the students by their attendance record.
@@ -433,32 +525,76 @@ def good_pairing(hist, students, tutors):
         best_score = None
         best_pair = None
         for tutor in tutors:
-            this_score = score(pairing + [(tutor, student)], hist)
+            (this_score, _) = get_score(pairing + [(tutor, student)],
+                                        hist, params)
             if best_score is None or this_score > best_score:
                 best_score = this_score
                 best_pair = (tutor, student)
         pairing.append(best_pair)
     return pairing
 
-def good_historical_score(hist, date, session):
+def good_historical_score(hist, date, session, params=None):
     actual = hist.get_pairing(date, session)
     students = set([p[1] for p in actual])
     tutors = set([p[0] for p in actual if p[0].strip() != ''])
     past_data = hist.get_data_before(date, session)
-    return good_pairing(past_data, students, tutors)
+    return good_pairing(past_data, students, tutors, params)
 
-def diff_pairings(pairing1, pairing2):
-    by_student1 = dict((s, t) for (t, s) in pairing1)
-    by_student2 = dict((s, t) for (t, s) in pairing2)
-    for student in by_student1:
-        if student not in by_student2:
-            print "-{0}".format(student)
-        elif by_student1[student] != by_student2[student]:
-            print "{0}: {1} -> {2}".format(student, by_student1[student],
-                                           by_student2[student])
-    for student in by_student2:
-        if student not in by_student1:
-            print "+{0}".format(student)
+def pairing_by_tutor(pairing):
+    by_tutor = collections.defaultdict(list)
+    for (tutor, student) in pairing:
+        by_tutor[tutor].append(student)
+    return by_tutor
+
+def print_pairing(pairing, annotations=None):
+    by_tutor = pairing_by_tutor(pairing)
+    for tutor in sorted(by_tutor):
+        ptutor = tutor
+        if tutor.strip() == "":
+            ptutor = "<NO TUTOR LISTED>"
+        print "{0:20s} : {1:40s}".format(
+            ptutor, ' / '.join(sorted(by_tutor[tutor])))
+        if annotations is not None:
+            for pair in annotations:
+                for ann in annotations[pair]:
+                    if pair[0] != tutor:
+                        continue
+                    print "{0:50s}{1}".format(' ', ann[1])
+
+def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
+    by_tutor1 = pairing_by_tutor(pairing1)
+    by_tutor2 = pairing_by_tutor(pairing2)
+
+    ptutor = lambda t: "<NO TUTOR LISTED>" if t.strip() == "" else t
+    tscore = lambda ann, t: sum(a[0]
+                                for pair in ann
+                                for a in ann[pair]
+                                if pair[0] == t)
+
+    for tutor in by_tutor1:
+        if tutor not in by_tutor2:
+            print "-{0:20s} {1:44s} {2}".format(ptutor(tutor), "",
+                                                "" if ann1 is None
+                                                else "(Score Difference: {0})".
+                                                format(-tscore(ann1, tutor)))
+        elif sorted(by_tutor1[tutor]) != sorted(by_tutor2[tutor]):
+            if ann1 is not None and ann2 is not None:
+                score1 = tscore(ann1, tutor)
+                score2 = tscore(ann2, tutor)
+                scorediff = "(Score Difference: {0})".format(score2 - score1)
+            else:
+                scorediff = ""
+            print "{0:20s}: {1:20s} -> {2:20s} {3}".format(
+                ptutor(tutor),
+                ' / '.join(by_tutor1[tutor]),
+                ' / '.join(by_tutor2[tutor]),
+                scorediff)
+    for tutor in by_tutor2:
+        if tutor not in by_tutor1:
+            print "+{0:20s} {1:44s} {2}".format(ptutor(tutor), "",
+                                                "" if ann2 is None
+                                                else "(Score Difference: {0})".
+                                                format(tscore(ann2, tutor)))
 
 # --------------------------------------------------------------------
 
