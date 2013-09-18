@@ -52,25 +52,19 @@ def run_pairing_code(hist, session, date, params, show_details):
     print "Calculating ... "
     print
 
-    if show_details:
-        logging.getLogger().setLevel(logging.DEBUG)
-    else:
-        logging.getLogger().setLevel(logging.WARN)
     actual = hist.get_pairing(date, session)
     (actual_score, actual_ann) = score_historical(hist, date, session, params)
-    logging.getLogger().setLevel(logging.WARN)
 
     best = good_historical_score(hist, date, session, params)
-    if show_details:
-        logging.getLogger().setLevel(logging.DEBUG)
-    else:
-        logging.getLogger().setLevel(logging.WARN)
-    (best_score, best_ann) = get_score(best,
-                                       hist.get_data_before(date, session))
-    logging.getLogger().setLevel(logging.WARN)
+    (best_score, best_ann) = get_score(
+        best, hist.get_data_before(date, session))
 
     print " ... Done"
     print
+
+    if not show_details:
+        actual_ann = None
+        best_ann = None
 
     print "Score for the actual pairing used: ", actual_score
     print "Score for the suggested pairing: ", best_score
