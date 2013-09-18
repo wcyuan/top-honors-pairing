@@ -118,6 +118,7 @@ class Pair(object):
                                          self.session,
                                          self.tutor_first,
                                          self.tutor_last,
+                                         self.student,
                                          self.csv_bool(self.tutor_on_own),
                                          self.csv_bool(self.on_own),
                                          self.csv_bool(self.avoid_student),
