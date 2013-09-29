@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="thpairing">
+  <head>
+    <title>Top Honors Pairing</title>
+    <link rel="stylesheet" href="css/app.css"/>
+    <link rel="stylesheet" href="css/bootstrap.css"/>
+    <script src="lib/angular/angular.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/controllers.js"></script>
+    <script src="js/filters.js"></script>
+    <script src="js/services.js"></script>
+    <!-- <script src="lib/angular/angular-resource.js"></script> -->
+  </head>
+
+  <body>
+
+    <ul class="nav nav-tabs">
+      <li class="active">
+        <a href="#/pairing/">Pairing</a>
+      </li>
+      <li><a href="#/historical/">Historical</a></li>
+      <li><a href="#/scoring/">Scoring</a></li>
+      <li><a href="#/students/">Students</a></li>
+      <li><a href="#/tutors/">Tutors</a></li>
+    </ul>
+    <div ng-view></div>
+  </body>
+</html>
