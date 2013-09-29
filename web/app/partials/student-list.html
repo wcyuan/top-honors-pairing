@@ -1,27 +1,29 @@
-<div class="container-fluid">
-  <div class="row-fluid">
-    <div class="span2">
-      <!--Sidebar content-->
-
+    <p> 
       Search: <input ng-model="query">
-      Sort by:
-      <select ng-model="orderProp">
-        <option value="name">Alphabetical</option>
-        <option value="age">Newest</option>
-      </select>
-
-    </div>
-    <div class="span10">
-      <!--Body content-->
-
-      <ul class="phones">
-        <li ng-repeat="phone in phones | filter:query | orderBy:orderProp" class="thumbnail">
-          <a href="#/phones/{{phone.id}}" class="thumb"><img ng-src="{{phone.imageUrl}}"></a>
-          <a href="#/phones/{{phone.id}}">{{phone.name}}</a>
-          <p>{{phone.snippet}}</p>
-        </li>
-      </ul>
-
-    </div>
-  </div>
-</div>
+    </p>
+    
+    <table class="table table-striped table-bordered table-condensed table-responsive students">
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+      <tr ng-repeat="student in students | filter:query | orderBy:order">
+        <td><form ng-submit="removeStudent('{{student._id}}')">
+            <input class="btn-primary" type="submit" value="rem">
+          </form>
+        </td>
+        <td>{{student.name}}</td>
+      </tr>
+      <tr>
+        <td>
+          </td>
+        <td>
+          <form ng-submit="addStudent()">
+            <input type="text" ng-model="studentName"  size="30"
+              placeholder="name">          
+            <input class="btn-primary" type="submit" value="add">
+          </form>
+        </td>
+        <td>
+      </tr>
+    </table>
