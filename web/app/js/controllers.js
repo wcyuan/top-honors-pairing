@@ -49,13 +49,14 @@ function StudentListCtrl($scope, Student) {
                              if(err) {
                                console.log('error! ' + err);
                              } else {
-                               console.log('Added a student!');
+                               console.log('Added a student: ' + newStudent._id + '!');
                              }
            });
     };
 
     $scope.updateStudent = function(student) {
         $scope.pouchdb.put(student);
+        // Need to update $scope.students too
     };
 
     $scope.removeStudent = function(studentId) {
@@ -67,6 +68,16 @@ function StudentListCtrl($scope, Student) {
                 $scope.pouchdb.remove(doc, function(err, response) {
                     console.log(response);
                 });
+                $scope.$apply(function() {
+                                var oldStudents = $scope.students;
+                                $scope.students = [];
+                                angular.forEach(oldStudents, function(student) {
+                                                  if (student._id != studentId) {
+                                                    $scope.students.push(student)
+                                                      }
+                                                });
+                                console.log($scope.students);
+                              });
             }
         });
     };
