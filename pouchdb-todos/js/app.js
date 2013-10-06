@@ -64,6 +64,12 @@
 
   // Initialise a sync with the remote server
   function sync() {
+    /*
+    syncDom.setAttribute('data-sync-state', 'syncing');
+    var opts = {continuous: true, complete: syncError};
+    db.replicate.to(remoteCouch, opts);
+    db.replicate.from(remoteCouch, opts);
+    */
   }
 
   // EDITING STARTS HERE (you dont need to edit anything below this line)
