@@ -1,2 +1,6 @@
 *.pyc
 *~
+
+# .env is for local heroku foreman settings,
+# we don't want to push it to production heroku
+.env
