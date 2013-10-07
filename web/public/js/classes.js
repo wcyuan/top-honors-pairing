@@ -14,7 +14,6 @@ function Tutor(first, last, gender)
 
 function DbTable(dbname, $scope)
 {
-    var remote_db = 'http://wcy.iriscouch.com';
 
     /*-------------------  Members ------------------*/
     this.data = [];
@@ -25,21 +24,43 @@ function DbTable(dbname, $scope)
 	    console.log(err);
 	}
 	else {
-	    db.allDocs(function(err, response) {
-		if (err) {
-		    console.log("Error getting all objects");
-		    console.log(err);
-		}
-		else {
-		    dbtable.load(response.rows);
-		}
-	    });
+	    dbtable.refresh(db);
 	}
     });
 
+    /*-------------------  Replication ------------------*/
+
+    var remote_db = 'http://wcy.iriscouch.com/' + dbname;
+
+    this.db.info(function(err, info) {
+	dbtable.db.changes({
+	    since: info.update_seq,
+	    continuous: true,
+	    onChange: function() { dbtable.refresh(dbtable.db) }
+	});
+    });
+    var opts = {continuous: true, complete: syncError};
+    this.db.replicate.to(remote_db, opts);
+    this.db.replicate.from(remote_db, opts);
+    function syncError() {
+	console.log("Sync error!");
+    }
 
     /*-------------------  Methods ------------------*/
+    this.refresh = function(db) {
+	db.allDocs(function(err, response) {
+	    if (err) {
+		console.log("Error getting all objects");
+		console.log(err);
+	    }
+	    else {
+		dbtable.load(response.rows);
+	    }
+	});
+    }
+
     this.load = function(rows) {
+	dbtable.data = []
 	for (var ii = 0; ii < rows.length; ii++) {
 	    this.db.get(rows[ii].id, function(err, doc) {
 		if (err) {

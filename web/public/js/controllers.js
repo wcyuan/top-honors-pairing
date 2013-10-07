@@ -3,7 +3,7 @@
 /* Controllers */
 
 function StudentListCtrl($scope) {
-    $scope.students = new DbTable('idb://thpairing_students', $scope);
+    $scope.students = new DbTable('students', $scope);
     $scope.addStudent = function() {
 	var student = new Student($scope.studentName, '', '', '');
 	$scope.students.add(student);
