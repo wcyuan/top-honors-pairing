@@ -7,7 +7,7 @@
         <th></th>
         <th>Name</th>
       </tr>
-      <tr ng-repeat="student in students | filter:query | orderBy:order">
+      <tr ng-repeat="student in students.data | filter:query | orderBy:order">
         <td><form ng-submit="removeStudent('{{student._id}}')">
             <input class="btn-primary" type="submit" value="rem">
           </form>

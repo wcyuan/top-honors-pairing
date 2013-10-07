@@ -2,7 +2,18 @@
 
 /* Controllers */
 
-function StudentListCtrl($scope, Student) {
+function StudentListCtrl($scope) {
+    $scope.students = new DbTable('idb://thpairing_students', $scope);
+    $scope.addStudent = function() {
+	var student = new Student($scope.studentName, '', '', '');
+	$scope.students.add(student);
+    }
+    $scope.removeStudent = function(studentId) {
+	$scope.students.remove(studentId);
+    }
+}
+
+function StudentListCtrl2($scope, Student) {
   $scope.students = [];
   $scope.order = 'name';
 
