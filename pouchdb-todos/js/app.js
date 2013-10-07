@@ -9,7 +9,9 @@
   // EDITING STARTS HERE (you dont need to edit anything above this line)
 
   var db = new PouchDB('todos');
-  var remoteCouch = false;
+  var remoteCouch = 'http://wcy.iriscouch.com/todos';
+  // can't get heroku to work...
+  //var remoteCouch = 'https://app18513137.heroku.cloudant.com/todos';
 
   db.info(function(err, info) {
             db.changes({
@@ -64,12 +66,10 @@
 
   // Initialise a sync with the remote server
   function sync() {
-    /*
     syncDom.setAttribute('data-sync-state', 'syncing');
     var opts = {continuous: true, complete: syncError};
     db.replicate.to(remoteCouch, opts);
     db.replicate.from(remoteCouch, opts);
-    */
   }
 
   // EDITING STARTS HERE (you dont need to edit anything below this line)
