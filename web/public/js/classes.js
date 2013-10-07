@@ -21,11 +21,13 @@ function DbTable(dbname, $scope)
     dbtable = this;
     this.db = new Pouch(dbname, function(err, db) {
 	if (err) {
+	    console.log("Error creating database " + dbname);
 	    console.log(err);
 	}
 	else {
 	    db.allDocs(function(err, response) {
 		if (err) {
+		    console.log("Error getting all objects");
 		    console.log(err);
 		}
 		else {
@@ -46,6 +48,7 @@ function DbTable(dbname, $scope)
 		    console.log(err);
 		} else {
 		    $scope.$apply(function() {
+			console.log("Loading: ");
 			console.log(doc);
 			dbtable.data.push(doc);
 		    });
@@ -57,9 +60,6 @@ function DbTable(dbname, $scope)
     }
 
     this.add = function(doc) {
-	console.log(doc);
-	doc = JSON.parse(JSON.stringify(doc));
-	console.log(doc);
 	this.db.post(doc, function(err, response) {
 	    if (err) {
 		console.log("Error adding object " + doc);
@@ -67,7 +67,8 @@ function DbTable(dbname, $scope)
 	    } else {
 		doc._id = response.id;
 		$scope.$apply(function() {
-		    console.log(dbtable);
+		    console.log("Adding: ");
+		    console.log(doc);
 		    dbtable.data.push(doc);
 		});
 	    }
@@ -100,6 +101,10 @@ function DbTable(dbname, $scope)
 			    angular.forEach(olddata, function(doc) {
 				if (doc._id != id) {
 				    dbtable.data.push(doc);
+				} else {
+				    console.log("Removing object id "
+						+ id);
+				    console.log(doc);
 				}
 			    });
 			});
