@@ -2,26 +2,21 @@
 
 /* Services */
 
-/*
 angular.module('th_database', []).
     factory('Database', function() {
-        var remote_db = 'http://wcy.iriscouch.com';
-	var dbs = {};
 
-	function get_db(dbname) {
-	    var fullname = remote_db + "/" + dbname;
-	    if (!(fullname in dbs)) {
-		dbs[fullname] = new Pouch(fullname, function(err, db) {
-		};
+	var cache = {}
+
+	return function (dbname, $scope) {
+	    if (!(dbname in cache)) {
+		cache[dbname] = new DbTable(dbname, $scope);
 	    }
-	}
-
-	this.get = function(dbname, key) {
-	    get_db(dbname)
+	    return cache[dbname];
 	}
 
     });
-*/
+
+
 /*
 angular.module('phonecatServices', ['ngResource']).
     factory('Phone', function($resource){

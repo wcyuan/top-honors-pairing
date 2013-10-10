@@ -2,8 +2,8 @@
 
 /* Controllers */
 
-function StudentListCtrl($scope) {
-    $scope.students = new DbTable('students', $scope);
+function StudentListCtrl($scope, Database) {
+    $scope.students = Database('students', $scope);
     $scope.addStudent = function() {
 	var student = new Student($scope.studentName, '', '', '');
 	$scope.students.add(student, $scope);
