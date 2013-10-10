@@ -1,0 +1,29 @@
+CACHE MANIFEST
+# rev 1
+/index.html
+/lib/angular/angular-sanitize.js
+/lib/angular/angular-sanitize.min.js
+/lib/angular/angular-loader.min.js
+/lib/angular/angular.min.js
+/lib/angular/angular-cookies.min.js
+/lib/angular/angular-cookies.js
+/lib/angular/angular-resource.min.js
+/lib/angular/version.txt
+/lib/angular/angular.js
+/lib/angular/angular-loader.js
+/lib/angular/angular-resource.js
+/lib/pouchdb/pouchdb-nightly.js
+/css/bootstrap-responsive.css
+/css/bootstrap-responsive.min.css
+/css/bootstrap.css
+/css/app.css
+/css/bootstrap.min.css
+#/cache.manifest
+#/.htaccess
+/partials/student-list.html
+/js/app.js
+/js/classes.js
+/js/directives.js
+/js/controllers.js
+/js/services.js
+/js/filters.js

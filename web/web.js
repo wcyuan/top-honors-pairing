@@ -44,6 +44,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 //app.use(express.favicon(path.join(__dirname, 'public/img/favicon.ico')));
 app.use(express.logger("dev"));
 
+
+app.get("/cache.manifest", function(req, res){
+    res.header("Content-Type", "text/cache-manifest");
+    var fileStream = fs.createReadStream('public/cache.manifest');
+    fileStream.pipe(res);
+});
+
 /*
 var ROUTES  = require('./routes');
 for(var ii in ROUTES) {
