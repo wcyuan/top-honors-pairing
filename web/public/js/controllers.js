@@ -6,10 +6,10 @@ function StudentListCtrl($scope) {
     $scope.students = new DbTable('students', $scope);
     $scope.addStudent = function() {
 	var student = new Student($scope.studentName, '', '', '');
-	$scope.students.add(student);
+	$scope.students.add(student, $scope);
     }
     $scope.removeStudent = function(studentId) {
-	$scope.students.remove(studentId);
+	$scope.students.remove(studentId, $scope);
     }
 }
 

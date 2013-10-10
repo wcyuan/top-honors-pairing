@@ -18,49 +18,58 @@ function DbTable(dbname, $scope)
     /*-------------------  Members ------------------*/
     this.data = [];
     dbtable = this;
-    this.db = new Pouch(dbname, function(err, db) {
-	if (err) {
-	    console.log("Error creating database " + dbname);
-	    console.log(err);
-	}
-	else {
-	    dbtable.refresh(db);
-	}
-    });
 
     /*-------------------  Replication ------------------*/
 
     var remote_db = 'http://wcy.iriscouch.com/' + dbname;
 
-    this.db.info(function(err, info) {
-	dbtable.db.changes({
-	    since: info.update_seq,
-	    continuous: true,
-	    onChange: function() { dbtable.refresh(dbtable.db) }
-	});
-    });
-    var opts = {continuous: true, complete: syncError};
-    this.db.replicate.to(remote_db, opts);
-    this.db.replicate.from(remote_db, opts);
     function syncError() {
 	console.log("Sync error!");
     }
 
     /*-------------------  Methods ------------------*/
-    this.refresh = function(db) {
+    this.getdb = function(dbname, $scope) {
+	return this.createdb(dbname, $scope);
+    }
+
+    this.createdb = function(dbname, $scope) {
+	this.db = new Pouch(dbname, function(err, db) {
+	    if (err) {
+		console.log("Error creating database " + dbname);
+		console.log(err);
+	    }
+	    else {
+		dbtable.refresh(db, $scope);
+	    }
+	});
+	this.db.info(function(err, info) {
+	    dbtable.db.changes({
+		since: info.update_seq,
+		continuous: true,
+		onChange: function() { dbtable.refresh(dbtable.db, $scope) }
+	    });
+	});
+	var opts = {continuous: true, complete: syncError};
+	this.db.replicate.to(remote_db, opts);
+	this.db.replicate.from(remote_db, opts);
+    }
+
+    this.refresh = function(db, $scope) {
 	db.allDocs(function(err, response) {
 	    if (err) {
 		console.log("Error getting all objects");
 		console.log(err);
 	    }
 	    else {
-		dbtable.load(response.rows);
+		dbtable.load(response.rows, $scope);
 	    }
 	});
     }
 
-    this.load = function(rows) {
-	dbtable.data = []
+    this.load = function(rows, $scope) {
+	$scope.$apply(function() {
+	    dbtable.data = []
+	});
 	for (var ii = 0; ii < rows.length; ii++) {
 	    this.db.get(rows[ii].id, function(err, doc) {
 		if (err) {
@@ -80,7 +89,7 @@ function DbTable(dbname, $scope)
 	}
     }
 
-    this.add = function(doc) {
+    this.add = function(doc, $scope) {
 	this.db.post(doc, function(err, response) {
 	    if (err) {
 		console.log("Error adding object " + doc);
@@ -104,7 +113,7 @@ function DbTable(dbname, $scope)
 	}
     }
 
-    this.remove = function(id) {
+    this.remove = function(id, $scope) {
 	this.db.get(id, function(err, doc) {
 	    if (err) {
 		console.log("Error removing object, can't find id " + id);
@@ -135,7 +144,7 @@ function DbTable(dbname, $scope)
 	});
     }
 
-    this.update = function(id, newdoc) {
+    this.update = function(id, newdoc, $scope) {
 	newdoc = JSON.stringify(newdoc);
 	this.db.get(id, function(err, existing) {
 	    if (err) {
@@ -166,4 +175,6 @@ function DbTable(dbname, $scope)
 	    }
 	});
     }
+
+    this.getdb(dbname, $scope);
 }
