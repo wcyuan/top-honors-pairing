@@ -17,6 +17,7 @@ function DbTable(dbname, $scope)
 
     /*-------------------  Members ------------------*/
     this.data = [];
+    this.cancels = []
     dbtable = this;
 
     /*-------------------  Replication ------------------*/
@@ -42,16 +43,27 @@ function DbTable(dbname, $scope)
 		dbtable.refresh(db, $scope);
 	    }
 	});
+	this.start_syncing($scope)
+    }
+
+    this.start_syncing = function($scope) {
 	this.db.info(function(err, info) {
-	    dbtable.db.changes({
+	    dbtable.cancels.push(dbtable.db.changes({
 		since: info.update_seq,
 		continuous: true,
 		onChange: function() { dbtable.refresh(dbtable.db, $scope) }
-	    });
+	    }));
 	});
 	var opts = {continuous: true, complete: syncError};
-	this.db.replicate.to(remote_db, opts);
-	this.db.replicate.from(remote_db, opts);
+	this.cancels.push(this.db.replicate.to(remote_db, opts));
+	this.cancels.push(this.db.replicate.from(remote_db, opts));
+    }
+
+    this.stop_syncing = function($scope) {
+	for (tocancel in this.cancels) {
+	    tocancel.cancel();
+	}
+	this.cancels = []
     }
 
     this.refresh = function(db, $scope) {

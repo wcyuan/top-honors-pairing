@@ -10,3 +10,15 @@ config(['$routeProvider', function($routeProvider) {
            when('/students', {templateUrl: 'partials/student-list.html',   controller: StudentListCtrl}).
            otherwise({redirectTo: '/students'});
        }]);
+
+
+angular.module('thpairing').run(function($rootScope) {
+    window.addEventListener("online", function () {
+        $rootScope.$broadcast('onlineChanged', true);
+    }, true);
+
+    window.addEventListener("offline", function () {
+        $rootScope.$broadcast('onlineChanged', false);
+    }, true);
+});
+

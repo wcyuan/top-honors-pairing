@@ -2,8 +2,9 @@
 
 /* Controllers */
 
-function StudentListCtrl($scope, Database) {
+function StudentListCtrl($scope, Database, $rootScope) {
     $scope.students = Database('students', $scope);
+    $scope.isOnline = "online";
     $scope.addStudent = function() {
 	var student = new Student($scope.studentName, '', '', '');
 	$scope.students.add(student, $scope);
@@ -11,6 +12,15 @@ function StudentListCtrl($scope, Database) {
     $scope.removeStudent = function(studentId) {
 	$scope.students.remove(studentId, $scope);
     }
+    $rootScope.$on('onlineChanged', function(evt, isOnline) {
+	if (isOnline) {
+	    $scope.isOnline = "online";
+	    $scope.students.start_syncing($scope);
+	} else {
+	    $scope.isOnline = "offline";
+	    $scope.students.stop_syncing($scope);
+	}
+    });
 }
 
 function StudentListCtrl2($scope, Student) {
