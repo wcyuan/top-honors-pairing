@@ -1,6 +1,18 @@
 CACHE MANIFEST
+
 # rev 1
+
 /index.html
+/css/app.css
+/js/app.js
+/js/classes.js
+/js/directives.js
+/js/controllers.js
+/js/services.js
+/js/filters.js
+/partials/student-list.html
+
+# third-party libraries
 /lib/angular/angular-sanitize.js
 /lib/angular/angular-sanitize.min.js
 /lib/angular/angular-loader.min.js
@@ -16,14 +28,4 @@ CACHE MANIFEST
 /css/bootstrap-responsive.css
 /css/bootstrap-responsive.min.css
 /css/bootstrap.css
-/css/app.css
 /css/bootstrap.min.css
-#/cache.manifest
-#/.htaccess
-/partials/student-list.html
-/js/app.js
-/js/classes.js
-/js/directives.js
-/js/controllers.js
-/js/services.js
-/js/filters.js
