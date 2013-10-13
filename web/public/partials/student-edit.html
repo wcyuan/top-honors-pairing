@@ -1,0 +1,7 @@
+<form name="edit-student">
+  <div class="control-group" ng-class="{error: edit-student.name.$invalid}">
+    <label>Name</label>
+    <input type="text" name="name" ng-model="student.name" required>
+    <span ng-show="edit-student.name.$error.required" class="help-inline"> Required </span>
+  </div>
+</form>

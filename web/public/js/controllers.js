@@ -30,6 +30,13 @@ function StudentListCtrl($scope, Database, $rootScope) {
     });
 }
 
+function EditStudentCtrl($scope, Database) {
+}
+
+function AddStudentCtrl($scope, Database) {
+}
+
+
 function StudentListCtrl2($scope, Student) {
   $scope.students = [];
   $scope.order = 'name';
