@@ -20,6 +20,9 @@
       <tr>
         <th></th>
         <th>Name</th>
+        <th>Gender</th>
+        <th>Grade</th>
+        <th>Initial Assessment</th>
       </tr>
       <tr ng-repeat="student in students.data | filter:query | orderBy:order">
         <td><form ng-submit="removeStudent('{{student._id}}')">
@@ -27,6 +30,9 @@
           </form>
         </td>
         <td>{{student.name}}</td>
+        <td>{{student.gender}}</td>
+        <td>{{student.grade}}</td>
+        <td>{{student.init_assessment}}</td>
       </tr>
       <tr>
         <td>
@@ -40,5 +46,5 @@
         </td>
         <td>
       </tr>
-      <a href="#/new"><i class="icon-pencil"></i></a>
+      <a href="#/add-student"><i class="icon-pencil"></i></a>
     </table>

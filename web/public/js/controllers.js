@@ -31,9 +31,18 @@ function StudentListCtrl($scope, Database, $rootScope) {
 }
 
 function EditStudentCtrl($scope, Database) {
+    
 }
 
-function AddStudentCtrl($scope, Database) {
+function AddStudentCtrl($scope, $location, Database) {
+    $scope.addStudent = function() {
+	var student = new Student($scope.student.name,
+				  $scope.student.grade,
+				  $scope.student.gender,
+				  $scope.student.assess);
+	Database("students", $scope).add(student, $scope);
+	$location.path('students');
+    }
 }
 
 

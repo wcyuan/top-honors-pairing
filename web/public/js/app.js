@@ -8,8 +8,8 @@ angular.module('thpairing', ['th_database']).
     config(['$routeProvider', function($routeProvider) {
 	$routeProvider.
             when('/students', {templateUrl: 'partials/student-list.html',   controller: StudentListCtrl}).
-            when('/add-student', {templateUrl: 'partials/student-edit.html',   controller: EditStudentCtrl}).
-            when('/edit-student', {templateUrl: 'partials/student-edit.html',   controller: AddStudentCtrl}).
+            when('/add-student', {templateUrl: 'partials/student-edit.html',   controller: AddStudentCtrl}).
+            when('/edit-student', {templateUrl: 'partials/student-edit.html',   controller: EditStudentCtrl}).
             //when('/pairing', {templateUrl: 'partials/pairing-list.html',   controller: PairingListCtrl}).
             //when('/historical', {templateUrl: 'partials/historical-list.html',   controller: HistoricalListCtrl}).
             //when('/scoring', {templateUrl: 'partials/scoring-list.html',   controller: ScoringListCtrl}).
