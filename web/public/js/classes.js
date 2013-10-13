@@ -43,7 +43,24 @@ function DbTable(dbname, $scope)
 		dbtable.refresh(db, $scope);
 	    }
 	});
-	this.start_syncing($scope)
+	//this.start_syncing($scope)
+    }
+
+    this.sync = function($scope) {
+	console.log("Starting syncing...");
+	var opts = {
+	    complete: function(err, response) {
+		if (err) {
+		    console.log("Error syncing!");
+		} else {
+		    console.log("Done syncing!  " + response);
+		}
+	    },
+	    onChange: function(change) {
+		dbtable.refresh(dbtable.db, $scope);
+	    }};
+	this.db.replicate.to(remote_db, opts);
+	this.db.replicate.from(remote_db, opts);
     }
 
     this.start_syncing = function($scope) {

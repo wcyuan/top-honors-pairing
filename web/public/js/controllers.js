@@ -14,11 +14,15 @@ function StudentListCtrl($scope, Database, $rootScope) {
     }
     $rootScope.$on('onlineChanged', function(evt, isOnline) {
 	if (isOnline) {
-	    $scope.isOnline = "online";
-	    $scope.students.start_syncing($scope);
+	    $scope.apply(function() {
+		$scope.isOnline = "online";
+	    });
+	    //$scope.students.start_syncing($scope);
 	} else {
-	    $scope.isOnline = "offline";
-	    $scope.students.stop_syncing($scope);
+	    $scope.apply(function() {
+		$scope.isOnline = "offline";
+	    });
+	    //$scope.students.stop_syncing($scope);
 	}
     });
 }

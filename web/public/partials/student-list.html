@@ -6,6 +6,12 @@
       App is online: {{ navigator.online }}
     </p>
 
+    <p>
+      <form ng-submit="students.sync()">
+        <input class="btn-primary" type="submit" value="Sync">
+      </form>
+    </p>
+
     <p> 
       Search: <input ng-model="query">
     </p>
