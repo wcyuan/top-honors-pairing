@@ -12,14 +12,17 @@ function StudentListCtrl($scope, Database, $rootScope) {
     $scope.removeStudent = function(studentId) {
 	$scope.students.remove(studentId, $scope);
     }
+    $scope.sync = function() {
+	$scope.students.sync($scope);
+    }
     $rootScope.$on('onlineChanged', function(evt, isOnline) {
 	if (isOnline) {
-	    $scope.apply(function() {
+	    $scope.$apply(function() {
 		$scope.isOnline = "online";
 	    });
 	    //$scope.students.start_syncing($scope);
 	} else {
-	    $scope.apply(function() {
+	    $scope.$apply(function() {
 		$scope.isOnline = "offline";
 	    });
 	    //$scope.students.stop_syncing($scope);
