@@ -19,6 +19,22 @@ the best Pairing for a week, given the Pairings for all previous weeks.
 
 HistoricalData is the set of all past Pairings.
 
+ - API
+ set current attendance for tutors and students
+ run pairing for this week
+ set compatibility information
+ try installing python?
+
+ - plan:
+ separate out the part of historical data that reads (and writes?) files
+ create a class for reading/writing a new format
+ reformat the historical data into sample data
+ create shortcuts to run on the sample data
+ refactor the scoring so that you can easily get the score for a
+   particular tutor (and all her students)
+ python gui?
+ http://farhadi.ir/projects/html5sortable/
+
 """
 # -------------------------------------------------------
 
@@ -371,42 +387,13 @@ class ScoreParams(object):
                                  format(kwarg,
                                         ', '.join(self.PARAMS)))
 
-def get_score(pairing, hist, params=None, **kwargs):
-    """
-    For each student-tutor pair:
-
-    - If the student and tutor have ever been marked as incompatible,
-      subtract 20.  Otherwise, add 1 for each time the student and tutor
-      have been paired together in the past.
-
-    - For each time in the past when the student and tutor have ever
-      been marked as a particularly good match, add another 5.
-
-    For each tutor that is paired with more than one student: Let's
-    say there are S students in the group.
-
-    - Subtract S-1 from the score (if we have enough tutors, we want to
-      encourage one-on-one tutoring).
-
-    - If the students have ever been marked incompatible with each
-      other, subtract 20.
-
-    - If any student or the tutor have been marked as 'on own',
-      subtract 10.
-
-    - If any of the students are scheduled to be working on different
-      subjects, subtract 5.
-
-    - If any of the students are not the same grade, subtract 2.
-    """
+def get_group_score(hist, tutor, students, params=None, **kwargs):
     if params is None:
         params = ScoreParams(**kwargs)
 
-    by_tutor = collections.defaultdict(list)
-    score = 0
     annotations = collections.defaultdict(list)
-    for (tutor, student) in pairing:
-        by_tutor[tutor].append(student)
+    score = 0
+    for student in students:
         prev = hist.get_matches(tutor=tutor, student=student)
         points_past_work = len(prev) * params.award_past_work
         score += points_past_work
@@ -436,61 +423,109 @@ def get_score(pairing, hist, params=None, **kwargs):
                 (params.award_good_match,
                  "+{0} because {1} and {2} are a good match".
                  format(params.award_good_match, tutor, student)))
-    for tutor in by_tutor:
-        n_students = len(by_tutor[tutor])
-        if n_students < 2:
-            continue
-        # Arbitrarily attach annotations to the first student
-        student1 = by_tutor[tutor][0]
-        points_multiple_students = ((n_students - 1)**2 *
-                                    params.penalty_multiple_students)
-        score -= points_multiple_students
-        logging.debug("Score %s: Decreasing score by %s because %s is working "
-                      "with %s students: %s",
-                      score, points_multiple_students, tutor, n_students,
-                      by_tutor[tutor])
+
+    n_students = len(students)
+    if n_students < 2:
+        return (score, annotations)
+    # Arbitrarily attach annotations to the first student
+    student1 = students[0]
+    points_multiple_students = ((n_students - 1)**2 *
+                                params.penalty_multiple_students)
+    score -= points_multiple_students
+    logging.debug("Score %s: Decreasing score by %s because %s is working "
+                  "with %s students: %s",
+                  score, points_multiple_students, tutor, n_students,
+                  students)
+    annotations[(tutor, student1)].append(
+        (-points_multiple_students,
+          "-{0} because {1} is working with {2} students".
+          format(points_multiple_students, tutor, n_students)))
+    if any([p.tutor_on_own for p in hist.get_matches(tutor=tutor)]):
+        logging.debug("Score %s: Decreasing score by %s because tutor %s "
+                      "should work alone",
+                      score, params.penalty_tutor_on_own, tutor)
+        score -= params.penalty_tutor_on_own
         annotations[(tutor, student1)].append(
-            (-points_multiple_students,
-              "-{0} because {1} is working with {2} students".
-              format(points_multiple_students, tutor, n_students)))
-        if any([p.tutor_on_own for p in hist.get_matches(tutor=tutor)]):
-            logging.debug("Score %s: Decreasing score by %s because tutor %s "
-                          "should work alone",
-                          score, params.penalty_tutor_on_own, tutor)
-            score -= params.penalty_tutor_on_own
-            annotations[(tutor, student1)].append(
+            (-params.penalty_tutor_on_own,
+              "-{0} because tutor {1} should only work on own".
+              format(params.penalty_tutor_on_own, tutor)))
+    for student in students:
+        if any([p.on_own for p in hist.get_matches(student=student)]):
+            logging.debug("Score %s: Decreasing score by %s because "
+                          "student %s should work alone",
+                          score, params.penalty_student_on_own, student)
+            score -= params.penalty_student_on_own
+            annotations[(tutor, student)].append(
                 (-params.penalty_tutor_on_own,
-                  "-{0} because tutor {1} should only work on own".
-                  format(params.penalty_tutor_on_own, tutor)))
-        for student in by_tutor[tutor]:
-            if any([p.on_own for p in hist.get_matches(student=student)]):
-                logging.debug("Score %s: Decreasing score by %s because "
-                              "student %s should work alone",
-                              score, params.penalty_student_on_own, student)
-                score -= params.penalty_student_on_own
-                annotations[(tutor, student)].append(
-                    (-params.penalty_tutor_on_own,
-                      "-{0} because student {1} should only work on own".
-                      format(params.penalty_tutor_on_own, student)))
-        for ii in xrange(n_students):
-            for jj in xrange(ii+1, n_students):
-                for pairs in hist.get_student_pairings(by_tutor[tutor][ii],
-                                                       by_tutor[tutor][jj]):
-                    if any([p.avoid_student for p in pairs]):
-                        logging.debug("Score %s: Decreasing score by %s "
-                                      "because student %s "
-                                      "should not work with student %s",
-                                      score, params.penalty_avoid_student,
-                                      by_tutor[tutor][ii], by_tutor[tutor][jj])
-                        score -= params.penalty_avoid_student
-                        annotations[(tutor, by_tutor[tutor][ii])].append(
-                            (-params.penalty_avoid_student,
-                              "-{0} because students {1} and {2} should "
-                              "not work with each other".
-                              format(pararms.penalty_avoid_student,
-                                     by_tutor[tutor][ii],
-                                     by_tutor[tutor][jj])))
-                        break
+                  "-{0} because student {1} should only work on own".
+                  format(params.penalty_tutor_on_own, student)))
+    for ii in xrange(n_students):
+        for jj in xrange(ii+1, n_students):
+            for pairs in hist.get_student_pairings(students[ii],
+                                                   students[jj]):
+                if any([p.avoid_student for p in pairs]):
+                    logging.debug("Score %s: Decreasing score by %s "
+                                  "because student %s "
+                                  "should not work with student %s",
+                                  score, params.penalty_avoid_student,
+                                  students[ii], students[jj])
+                    score -= params.penalty_avoid_student
+                    annotations[(tutor, students[ii])].append(
+                        (-params.penalty_avoid_student,
+                          "-{0} because students {1} and {2} should "
+                          "not work with each other".
+                          format(pararms.penalty_avoid_student,
+                                 students[ii],
+                                 students[jj])))
+                    break
+    return (score, annotations)
+
+def get_score(pairing, hist, params=None, **kwargs):
+    """
+    For each student-tutor pair:
+
+    - If the student and tutor have ever been marked as incompatible,
+      subtract 20.  Otherwise, add 1 for each time the student and tutor
+      have been paired together in the past.
+
+    - For each time in the past when the student and tutor have ever
+      been marked as a particularly good match, add another 5.
+
+    For each tutor that is paired with more than one student: Let's
+    say there are S students in the group.
+
+    - Subtract S-1 from the score (if we have enough tutors, we want to
+      encourage one-on-one tutoring).
+
+    - If the students have ever been marked incompatible with each
+      other, subtract 20.
+
+    - If any student or the tutor have been marked as 'on own',
+      subtract 10.
+
+    - If any of the students are scheduled to be working on different
+      subjects, subtract 5.
+
+    - If any of the students are not the same grade, subtract 2.
+
+    @return Returns a tuple of two values: The first value is the
+    score (an integer).  The second value is a dict called
+    'annotations' whose keys are (tutor, student), and whose values
+    are lists of [(points1, description1), (points2, description2),
+    ...]  The sum of the points in the annotations will be the same as
+    the score.
+    """
+    if params is None:
+        params = ScoreParams(**kwargs)
+
+    by_tutor = pairing_by_tutor(pairing)
+    score = 0
+    annotations = {}
+    for tutor in by_tutor:
+        group_score, group_ann = get_group_score(hist, tutor, by_tutor[tutor],
+                                                 params=params)
+        score += group_score
+        annotations.update(group_ann)
     return score, annotations
 
 def score_historical(hist, date, session, params=None):
@@ -535,6 +570,10 @@ def good_historical_score(hist, date, session, params=None):
     return good_pairing(past_data, students, tutors, params)
 
 def pairing_by_tutor(pairing):
+    """
+    Given a pairing (a list of (tutor, student)), return a dictionary
+    from tutor to a list of students.
+    """
     by_tutor = collections.defaultdict(list)
     for (tutor, student) in pairing:
         by_tutor[tutor].append(student)
@@ -556,6 +595,10 @@ def print_pairing(pairing, annotations=None):
                     print "{0:50s}{1}".format(' ', ann[1])
 
 def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
+    """
+    Given two pairings (lists of (tutor, student)), print the
+    differences, including differences in scores.
+    """
     by_tutor1 = pairing_by_tutor(pairing1)
     by_tutor2 = pairing_by_tutor(pairing2)
 
