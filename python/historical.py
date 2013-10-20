@@ -26,12 +26,9 @@ HistoricalData is the set of all past Pairings.
  try installing python?
 
  - plan:
- separate out the part of historical data that reads (and writes?) files
  create a class for reading/writing a new format
  reformat the historical data into sample data
  create shortcuts to run on the sample data
- refactor the scoring so that you can easily get the score for a
-   particular tutor (and all her students)
  python gui?
  http://farhadi.ir/projects/html5sortable/
 
@@ -54,17 +51,26 @@ logging.basicConfig(format='[%(asctime)s '
 
 def main():
     opts = getopts()
-    hist = HistoricalData.read_all_data()
-
+    hist = get_2012_data()
     given_params = dict((k, getattr(opts, k))
                         for k in ScoreParams.PARAMS
                         if hasattr(opts, k))
     params = ScoreParams(**given_params)
-    run_pairing_code(hist, opts.session, opts.date,
-                     params,
-                     opts.verbose)
+    run_pairing_code(opts.date,
+                     opts.session,
+                     hist=hist,
+                     params=params,
+                     show_details=opts.verbose)
 
-def run_pairing_code(hist, session, date, params, show_details):
+def run_pairing_code(date, session,
+                     hist=None,
+                     params=None,
+                     show_details=False):
+    if hist is None:
+        hist = get_2012_data()
+    if params is None:
+        params = ScoreParams()
+
     print "Calculating ... "
     print
 
@@ -106,7 +112,7 @@ def getopts():
                       default='am_purple')
     parser.add_option('--verbose',
                       action='store_true',
-                      help='set log level to DEBUG')
+                      help='show score annotations')
     parser.add_option('--log_level',
                       help='set the log level')
     for param in ScoreParams.PARAMS:
@@ -152,6 +158,8 @@ class Pair(object):
         self.student       = student
         self.tutor_on_own  = tutor_on_own
         self.on_own        = on_own
+        # Instead of avoid_student being a boolean, should it be the
+        # name of the student to avoid?
         self.avoid_student = avoid_student
         self.avoid_tutor   = avoid_tutor
         self.good_match    = good_match
@@ -191,136 +199,19 @@ class HistoricalData(object):
                           for pair in self.data])
 
     @classmethod
-    def parse_date(cls, column_name):
+    def pairing_by_tutor(cls, pairing):
         """
-        >>> HistoricalData.parse_date('05/04 MATCH')
-        20130504
-        >>> HistoricalData.parse_date('12/15 MATCH')
-        20121215
-        >>> HistoricalData.parse_date('TUTOR NAME')
-        'TUTOR NAME'
+        Given a pairing (a list of (tutor, student)), return a dictionary
+        from tutor to a list of students.
         """
-        match = re.match('(\d+)/(\d+) MATCH$', column_name)
-        if match is None:
-            return column_name
-        month = int(match.group(1))
-        day = int(match.group(2))
-        if int(month) < 6:
-            year = 2013
-        else:
-            year = 2012
-        return int('{0:04d}{1:02d}{2:02d}'.format(year, month, day))
+        by_tutor = collections.defaultdict(list)
+        for (tutor, student) in pairing:
+            by_tutor[tutor].append(student)
+        return by_tutor
 
-    @classmethod
-    def parse_mark(cls, mark, student):
-        """
-        >>> HistoricalData.parse_mark('OO', 'Nachy OO')
-        ('Nachy', True)
-        >>> HistoricalData.parse_mark(':-)', 'Tyrique  :-)')
-        ('Tyrique', True)
-        >>> HistoricalData.parse_mark('X', 'X William P.')
-        ('William P.', True)
-        >>> HistoricalData.parse_mark('X', 'Alex')
-        ('Alex', False)
-        >>> HistoricalData.parse_mark('OO', "D'Shun")
-        ("D'Shun", False)
-        """
-        if student.endswith(' ' + mark):
-            student = student[:-len(mark)-1].strip()
-            return (student, True)
-        elif student.startswith(mark + ' '):
-            student = student[len(mark)+1:].strip()
-            return (student, True)
-        return (student, False)
-
-    @classmethod
-    def parse_student(cls, student):
-        """
-        >>> HistoricalData.parse_student('X William P.')
-        ('William P.', False, True, False)
-        >>> HistoricalData.parse_student('Tyrique  :-)  ')
-        ('Tyrique', False, False, True)
-        """
-        student = student.strip()
-        (student, on_own) = cls.parse_mark('OO', student)
-        (student, avoid_tutor) = cls.parse_mark('X', student)
-        (student, good_match) = cls.parse_mark(':-)', student)
-        return (student, on_own, avoid_tutor, good_match)
-
-    @classmethod
-    def parse_students(cls, students):
-        """
-        >>> HistoricalData.parse_students('Maelease / Alyssa')
-        (['Maelease ', ' Alyssa'], False)
-        >>> HistoricalData.parse_students('Carmen / Mika-Elle')
-        (['Carmen ', ' Mika-Elle'], False)
-        >>> HistoricalData.parse_students('Michael G.  /  Carmen / Derk')
-        (['Michael G.  ', '  Carmen ', ' Derk'], False)
-        >>> HistoricalData.parse_students('Chloe // Amanda')
-        (['Chloe ', ' Amanda'], True)
-        """
-        if students.find('//') >= 0:
-            students = students.split('//')
-            avoid_student = True
-        else:
-            students = students.split('/')
-            avoid_student = False
-        return (students, avoid_student)
-
-    def read_file(self, fn, session):
-        # In addition to the lines listed under "Missed one", there
-        # are also problems with lines like:
-        #   "Annabelle +"
-        #   "Annabelle w/someone"
-        #   lines with no tutor
-        #   "see Natasha above"
+    def add_pairings(self, pairings):
         self._data_by_tutor = None
-        lines = [l.split(',') for l in open(fn).readlines()]
-        header = [self.parse_date(c) for c in lines.pop(0)]
-        for line in lines:
-            tutor_first = None
-            tutor_last  = None
-            last_fld = None
-            for (fld, val) in itertools.izip_longest(header, line):
-                val = val.strip()
-                if fld == 'TUTOR NAME':
-                    tutor_first = val
-                    (tutor_first, tutor_on_own) = self.parse_mark(
-                        'OO', tutor_first)
-                elif last_fld == 'TUTOR NAME':
-                    tutor_last = val
-                    (tutor_last, tutor_last_on_own) = self.parse_mark(
-                        'OO', tutor_last)
-                    tutor_on_own = tutor_on_own or tutor_last_on_own
-                elif type(fld) == int:
-                    if val == '':
-                        continue
-                    date = fld
-                    (students, avoid_student) = self.parse_students(val)
-                    for student in students:
-                        (student, on_own, avoid_tutor,
-                         good_match) = self.parse_student(student)
-                        # Sanity Check
-                        if any([student.lower().find(mark.lower()) >= 0
-                                for mark in ('OO', ' X ', ':-)', '*')]):
-                            logging.info('Missed one? "{0}" -- {1}, {2} {3} {4} {5}'.
-                                         format(student, val, session,
-                                                tutor_first, tutor_last, date))
-                        self.data.append(Pair(date, session, tutor_first,
-                                              tutor_last, student,
-                                              tutor_on_own, on_own,
-                                              avoid_student,
-                                              avoid_tutor,
-                                              good_match))
-                last_fld = fld
-
-    @classmethod
-    def read_all_data(cls):
-        obj = cls()
-        obj.read_file('am_purple.csv', 'am_purple')
-        obj.read_file('am_orange.csv', 'am_orange')
-        obj.read_file('pm.csv', 'pm')
-        return obj
+        self.data.extend(pairings)
 
     @property
     def data_by_tutor(self):
@@ -364,6 +255,143 @@ class HistoricalData(object):
     @property
     def all_tutors(self):
         return sorted(set([d.tutor for d in self.data]))
+
+# --------------------------------------------------------------------
+
+class ParseManualFile(object):
+    @classmethod
+    def parse_date(cls, column_name, start_year=2012):
+        """
+        >>> ParseManualFile.parse_date('05/04 MATCH', 2012)
+        20130504
+        >>> ParseManualFile.parse_date('12/15 MATCH', 2012)
+        20121215
+        >>> ParseManualFile.parse_date('TUTOR NAME', 2012)
+        'TUTOR NAME'
+        """
+        match = re.match('(\d+)/(\d+) MATCH$', column_name)
+        if match is None:
+            return column_name
+        month = int(match.group(1))
+        day = int(match.group(2))
+        if int(month) < 6:
+            year = start_year + 1
+        else:
+            year = start_year
+        return int('{0:04d}{1:02d}{2:02d}'.format(year, month, day))
+
+    @classmethod
+    def parse_mark(cls, mark, student):
+        """
+        >>> ParseManualFile.parse_mark('OO', 'Nachy OO')
+        ('Nachy', True)
+        >>> ParseManualFile.parse_mark(':-)', 'Tyrique  :-)')
+        ('Tyrique', True)
+        >>> ParseManualFile.parse_mark('X', 'X William P.')
+        ('William P.', True)
+        >>> ParseManualFile.parse_mark('X', 'Alex')
+        ('Alex', False)
+        >>> ParseManualFile.parse_mark('OO', "D'Shun")
+        ("D'Shun", False)
+        """
+        if student.endswith(' ' + mark):
+            student = student[:-len(mark)-1].strip()
+            return (student, True)
+        elif student.startswith(mark + ' '):
+            student = student[len(mark)+1:].strip()
+            return (student, True)
+        return (student, False)
+
+    @classmethod
+    def parse_student(cls, student):
+        """
+        >>> ParseManualFile.parse_student('X William P.')
+        ('William P.', False, True, False)
+        >>> ParseManualFile.parse_student('Tyrique  :-)  ')
+        ('Tyrique', False, False, True)
+        """
+        student = student.strip()
+        (student, on_own) = cls.parse_mark('OO', student)
+        (student, avoid_tutor) = cls.parse_mark('X', student)
+        (student, good_match) = cls.parse_mark(':-)', student)
+        return (student, on_own, avoid_tutor, good_match)
+
+    @classmethod
+    def parse_students(cls, students):
+        """
+        >>> ParseManualFile.parse_students('Maelease / Alyssa')
+        (['Maelease ', ' Alyssa'], False)
+        >>> ParseManualFile.parse_students('Carmen / Mika-Elle')
+        (['Carmen ', ' Mika-Elle'], False)
+        >>> ParseManualFile.parse_students('Michael G.  /  Carmen / Derk')
+        (['Michael G.  ', '  Carmen ', ' Derk'], False)
+        >>> ParseManualFile.parse_students('Chloe // Amanda')
+        (['Chloe ', ' Amanda'], True)
+        """
+        if students.find('//') >= 0:
+            students = students.split('//')
+            avoid_student = True
+        else:
+            students = students.split('/')
+            avoid_student = False
+        return (students, avoid_student)
+
+    @classmethod
+    def read_file(cls, fn, session, start_year=2012):
+        data = []
+        # In addition to the lines listed under "Missed one", there
+        # are also problems with lines like:
+        #   "Annabelle +"
+        #   "Annabelle w/someone"
+        #   lines with no tutor
+        #   "see Natasha above"
+        lines = [l.split(',') for l in open(fn).readlines()]
+        header = [cls.parse_date(c, start_year=start_year)
+                  for c in lines.pop(0)]
+        for line in lines:
+            tutor_first = None
+            tutor_last  = None
+            last_fld = None
+            for (fld, val) in itertools.izip_longest(header, line):
+                val = val.strip()
+                if fld == 'TUTOR NAME':
+                    tutor_first = val
+                    (tutor_first, tutor_on_own) = cls.parse_mark(
+                        'OO', tutor_first)
+                elif last_fld == 'TUTOR NAME':
+                    tutor_last = val
+                    (tutor_last, tutor_last_on_own) = cls.parse_mark(
+                        'OO', tutor_last)
+                    tutor_on_own = tutor_on_own or tutor_last_on_own
+                elif type(fld) == int:
+                    if val == '':
+                        continue
+                    date = fld
+                    (students, avoid_student) = cls.parse_students(val)
+                    for student in students:
+                        (student, on_own, avoid_tutor,
+                         good_match) = cls.parse_student(student)
+                        # Sanity Check
+                        if any([student.lower().find(mark.lower()) >= 0
+                                for mark in ('OO', ' X ', ':-)', '*')]):
+                            logging.info('Missed one? "{0}" -- {1}, {2} {3} {4} {5}'.
+                                         format(student, val, session,
+                                                tutor_first, tutor_last, date))
+                        data.append(Pair(date, session, tutor_first,
+                                         tutor_last, student,
+                                         tutor_on_own, on_own,
+                                         avoid_student,
+                                         avoid_tutor,
+                                         good_match))
+                last_fld = fld
+        return data
+
+def get_2012_data():
+    data = []
+    data.extend(ParseManualFile.read_file('am_purple.csv', 'am_purple', 2012))
+    data.extend(ParseManualFile.read_file('am_orange.csv', 'am_orange', 2012))
+    data.extend(ParseManualFile.read_file('pm.csv', 'pm', 2012))
+    return HistoricalData(data)
 
 # --------------------------------------------------------------------
 
@@ -474,7 +502,7 @@ def get_group_score(hist, tutor, students, params=None, **kwargs):
                         (-params.penalty_avoid_student,
                           "-{0} because students {1} and {2} should "
                           "not work with each other".
-                          format(pararms.penalty_avoid_student,
+                          format(params.penalty_avoid_student,
                                  students[ii],
                                  students[jj])))
                     break
@@ -518,7 +546,7 @@ def get_score(pairing, hist, params=None, **kwargs):
     if params is None:
         params = ScoreParams(**kwargs)
 
-    by_tutor = pairing_by_tutor(pairing)
+    by_tutor = HistoricalData.pairing_by_tutor(pairing)
     score = 0
     annotations = {}
     for tutor in by_tutor:
@@ -532,6 +560,8 @@ def score_historical(hist, date, session, params=None):
     actual = hist.get_pairing(date, session)
     past_data = hist.get_data_before(date, session)
     return get_score(actual, past_data, params)
+
+# --------------------------------------------------------------------
 
 def good_pairing(hist, students, tutors, params=None):
     """
@@ -569,18 +599,10 @@ def good_historical_score(hist, date, session, params=None):
     past_data = hist.get_data_before(date, session)
     return good_pairing(past_data, students, tutors, params)
 
-def pairing_by_tutor(pairing):
-    """
-    Given a pairing (a list of (tutor, student)), return a dictionary
-    from tutor to a list of students.
-    """
-    by_tutor = collections.defaultdict(list)
-    for (tutor, student) in pairing:
-        by_tutor[tutor].append(student)
-    return by_tutor
+# --------------------------------------------------------------------
 
 def print_pairing(pairing, annotations=None):
-    by_tutor = pairing_by_tutor(pairing)
+    by_tutor = HistoricalData.pairing_by_tutor(pairing)
     for tutor in sorted(by_tutor):
         ptutor = tutor
         if tutor.strip() == "":
@@ -599,8 +621,8 @@ def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
     Given two pairings (lists of (tutor, student)), print the
     differences, including differences in scores.
     """
-    by_tutor1 = pairing_by_tutor(pairing1)
-    by_tutor2 = pairing_by_tutor(pairing2)
+    by_tutor1 = HistoricalData.pairing_by_tutor(pairing1)
+    by_tutor2 = HistoricalData.pairing_by_tutor(pairing2)
 
     ptutor = lambda t: "<NO TUTOR LISTED>" if t.strip() == "" else t
     tscore = lambda ann, t: sum(a[0]
