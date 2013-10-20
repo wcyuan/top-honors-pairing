@@ -21,14 +21,30 @@ HistoricalData is the set of all past Pairings.
 
  - API
  set current attendance for tutors and students
- run pairing for this week
+ run pairing for this week (overwriting anything that's there)
+ modify the pairing
+ score the given pairing
  set compatibility information
- try installing python?
+ validate (make sure no names are misspelled, that the format is ok, etc)
+
+ - data layout: many separate files
+   - input attendance
+   - historical data
+   - score parameters
+   - a run log
+   - a bitbucket git repo inside of a dropbox shared folder (?)
+     - stores everything (including data)?  or just the code?
+       or just the code and the historical data?
+       is the data sensitive?  Just use github?
 
  - plan:
+ figure out the new format -- how to represent compatibility info?
  create a class for reading/writing a new format
  reformat the historical data into sample data
- create shortcuts to run on the sample data
+ create Windows shortcuts to run on the sample data (each value in the API)
+ put things on dropbox/git
+
+ - maybe/somday?
  python gui?
  http://farhadi.ir/projects/html5sortable/
 
@@ -158,8 +174,8 @@ class Pair(object):
         self.student       = student
         self.tutor_on_own  = tutor_on_own
         self.on_own        = on_own
-        # Instead of avoid_student being a boolean, should it be the
-        # name of the student to avoid?
+        # Instead of avoid_student being a boolean, should it be a
+        # list of the names students to avoid?
         self.avoid_student = avoid_student
         self.avoid_tutor   = avoid_tutor
         self.good_match    = good_match
