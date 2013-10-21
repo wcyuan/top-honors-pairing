@@ -135,7 +135,6 @@ def make_files(hist, params):
      - historical data
      - input attendance
      - current pairing
-     - a run log    
     """
     with open('data/Parameters.csv', 'w') as fd:
         fd.write(params.to_csv())
@@ -268,10 +267,15 @@ class HistoricalData(object):
                                                          'student'))])
 
     def from_csv(self, filename):
+        pairings = []
         with open(filename) as fd:
+            header = None
             for line in fd:
-                pass
-
+                if header is None:
+                    header = line
+                    continue
+                pairings.append(Pair.from_csv(header, line))
+        self.add_pairings(pairings)
 
     @classmethod
     def pairing_by_tutor(cls, pairing):
@@ -498,6 +502,11 @@ class ScoreParams(object):
         return '\n'.join(
             ','.join((param, str(getattr(self, param))))
             for param in self.PARAMS)
+
+    @classmethod
+    def from_csv(cls, filename):
+        with open(filename) as fd:
+            return cls(**dict(line.split(',') for line in fd))
 
 def get_group_score(hist, tutor, students, params=None, **kwargs):
     if params is None:
