@@ -453,7 +453,8 @@ class ParseManualFile(object):
                         # Sanity Check
                         if any([student.lower().find(mark.lower()) >= 0
                                 for mark in ('OO', ' X ', ':-)', '*')]):
-                            logging.info('Missed one? "{0}" -- {1}, {2} {3} {4} {5}'.
+                            logging.info('Missed one? "{0}" -- {1}, {2} '
+                                         '{3} {4} {5}'.
                                          format(student, val, session,
                                                 tutor_first, tutor_last, date))
                         data.append(Pair(date=date,
