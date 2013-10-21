@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Functions to deal with historical data in Top Honors pairing
+"""Functions to deal with historical data in Top Honors pairing
 
 Run doctests with:
   python -m doctest historical.py
@@ -19,23 +18,29 @@ the best Pairing for a week, given the Pairings for all previous weeks.
 
 HistoricalData is the set of all past Pairings.
 
- - API
- (set current attendance for tutors and students)
- run pairing for this week (overwriting anything that's there)
- (modify the pairing)
- score the given pairing
- (set compatibility information)
- validate (make sure no names are misspelled, that the format is ok, etc)
- save the given pairing to historical data
- - Extended API
- Given a past date, populate the 'input attendance' and 'current
- pairing' with the data from that date (with the score and explanation)
+ - API ('-' means run a script, '.' means use excel to edit a csv file)
+   - create blank attendance sheet, including the previous topic for
+     each student
+   . (set current attendance for tutors and students, including current topics)
+   - run pairing for this week (overwriting anything that's there)
+   . (modify the pairing)
+   - score the given pairing
+   . (set compatibility information)
+   - validate (make sure no names are misspelled, that the format is ok, etc)
+   - save the given pairing to historical data
 
- - data layout: many separate files
+ - Extended API
+   - Given a past date, populate the 'input attendance' and 'current
+     pairing' with the data from that date (with the score and explanation)
+   - Rename a student or tutor
+
+ - Data layout: many separate files
    - score parameters
    - historical data
    - input attendance
    - current pairing
+   - list of students -- including initial assessment, gender, etc.
+   - list of tutors -- including gender, etc.
    - a run log
  - code:
    - a bitbucket git repo inside of a dropbox shared folder (?)
@@ -54,7 +59,9 @@ HistoricalData is the set of all past Pairings.
  [x] put things on dropbox/git
  [x] create a class for reading/writing a new format
  [x] reformat the historical data into sample data
+ [ ] Add "topic" to Pairings, add student/tutor list
  [ ] create scripts to run on the sample data (each value in the API)
+ [ ] Address issues in parsing the old manual file
  [ ] clean up code organization (break into several files,
      separate main from functions)
  [ ] work more on validation
@@ -163,7 +170,7 @@ def make_files(hist, params):
         fd.write("\n")
     if (hist != HistoricalData().from_csv('data/HistoricalPairings.csv')):
         raise RuntimeError("Error dumping historical data")
-    with open('Attendance.csv', 'w') as fd: 
+    with open('Attendance.csv', 'w') as fd:
         students = set([p.student for p in hist.data])
         tutors = set([p.tutor for p in hist.data if p.tutor.strip() != ''])
         fd.write(','.join(('Student', '', 'Tutor', '')))
@@ -603,7 +610,7 @@ class ScoreParams(object):
             mine = getattr(self, p)
             theirs = getattr(other, p)
             if mine != theirs:
-                logging.debug("Param %s: mine %s != theirs %s".
+                logging.debug("Param %s: mine %s != theirs %s",
                               p, mine, theirs)
                 return False
         return True
