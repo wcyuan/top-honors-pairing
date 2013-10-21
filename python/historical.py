@@ -20,13 +20,16 @@ the best Pairing for a week, given the Pairings for all previous weeks.
 HistoricalData is the set of all past Pairings.
 
  - API
- set current attendance for tutors and students
+ (set current attendance for tutors and students)
  run pairing for this week (overwriting anything that's there)
- modify the pairing
+ (modify the pairing)
  score the given pairing
- set compatibility information
+ (set compatibility information)
  validate (make sure no names are misspelled, that the format is ok, etc)
- score past data
+ save the given pairing to historical data
+ - Extended API
+ Given a past date, populate the 'current pairing' with the pairing
+   from that date, with the score
 
  - data layout: many separate files
    - score parameters
@@ -34,10 +37,17 @@ HistoricalData is the set of all past Pairings.
    - input attendance
    - current pairing
    - a run log
+ - code:
    - a bitbucket git repo inside of a dropbox shared folder (?)
      - stores everything (including data)?  or just the code?
        or just the code and the historical data?
        is the data sensitive?  Just use github?
+   - a directory for each year
+     a py script for each command
+     csv files for input and output
+     data directory -- holds historical data and log
+   - the py scripts are links to a single script that acts based on
+     its name and cwd.
 
  - plan:
  figure out the new format -- how to represent compatibility info?
@@ -58,6 +68,7 @@ from __future__ import absolute_import, division, with_statement
 import collections
 import itertools
 import logging
+import operator
 import optparse
 import re
 
@@ -69,16 +80,83 @@ logging.basicConfig(format='[%(asctime)s '
 
 def main():
     opts = getopts()
-    hist = get_2012_data()
     given_params = dict((k, getattr(opts, k))
                         for k in ScoreParams.PARAMS
                         if hasattr(opts, k))
     params = ScoreParams(**given_params)
-    run_pairing_code(opts.date,
-                     opts.session,
-                     hist=hist,
-                     params=params,
-                     show_details=opts.verbose)
+    hist = get_2012_data()
+    if opts.make_files:
+        make_files(hist, params)
+    else:
+        run_pairing_code(opts.date,
+                         opts.session,
+                         hist=hist,
+                         params=params,
+                         show_details=opts.verbose)
+
+def getopts():
+    parser = optparse.OptionParser()
+    parser.add_option('--date',
+                      type=int,
+                      default=20130413)
+    parser.add_option('--session',
+                      default='am_purple')
+    parser.add_option('--verbose',
+                      action='store_true',
+                      help='show score annotations')
+    parser.add_option('--log_level',
+                      help='set the log level')
+    parser.add_option('--make_files',
+                      action='store_true',
+                      help='make initial csv files')
+    for param in ScoreParams.PARAMS:
+        parser.add_option('--' + param,
+                          default=ScoreParams.PARAMS[param])
+
+    (opts, args) = parser.parse_args()
+
+    if len(args) > 0:
+        raise ValueError("Did not expect to get any arguments: {0}".
+                         format(args))
+
+    if opts.log_level is not None:
+        level = getattr(logging, opts.log_level.upper())
+        logging.getLogger().setLevel(level)
+        logging.info("Setting log level to %s", level)
+
+    return opts
+
+# -------------------------------------------------------
+
+def make_files(hist, params):
+    """
+    Make the initial version of the following files:
+     - score parameters
+     - historical data
+     - input attendance
+     - current pairing
+     - a run log    
+    """
+    with open('data/Parameters.csv', 'w') as fd:
+        fd.write(params.to_csv())
+        fd.write("\n")
+    with open('data/HistoricalPairings.csv', 'w') as fd:
+        fd.write(hist.to_csv())
+        fd.write("\n")
+    with open('Attendance.csv', 'w') as fd: 
+        students = set([p.student for p in hist.data])
+        tutors = set([p.tutor for p in hist.data if p.tutor.strip() != ''])
+        fd.write(','.join(('Student', '', 'Tutor', '')))
+        fd.write("\n")
+        for (student, tutor) in itertools.izip_longest(students,
+                                                       tutors,
+                                                       fillvalue=''):
+            fd.write(','.join((student, '', tutor, '')))
+            fd.write("\n")
+    with open('Pairing.csv', 'w') as fd:
+        fd.write('')
+
+# -------------------------------------------------------
 
 def run_pairing_code(date, session,
                      hist=None,
@@ -121,86 +199,54 @@ def run_pairing_code(date, session,
     print
     diff_pairings(actual, best, actual_ann, best_ann)
 
-def getopts():
-    parser = optparse.OptionParser()
-    parser.add_option('--date',
-                      type=int,
-                      default=20130413)
-    parser.add_option('--session',
-                      default='am_purple')
-    parser.add_option('--verbose',
-                      action='store_true',
-                      help='show score annotations')
-    parser.add_option('--log_level',
-                      help='set the log level')
-    for param in ScoreParams.PARAMS:
-        parser.add_option('--' + param,
-                          default=ScoreParams.PARAMS[param])
-
-    (opts, args) = parser.parse_args()
-
-    if len(args) > 0:
-        raise ValueError("Did not expect to get any arguments: {0}".
-                         format(args))
-
-    if opts.log_level is not None:
-        level = getattr(logging, opts.log_level.upper())
-        logging.getLogger().setLevel(level)
-        logging.info("Setting log level to %s", level)
-
-    return opts
-
 # -------------------------------------------------------
 
 class Pair(object):
-    HEADER = ('Date',
-              'Session',
-              'Tutor First',
-              'Tutor Last',
-              'Student',
-              'Tutor On Own',
-              'On Own',
-              'Avoid Student',
-              'Avoid Tutor',
-              'Good Match')
+    STR_FIELDS  = ('date', 'session', 'tutor_first', 'tutor_last', 'student')
+    # Instead of avoid_student being a boolean, should it be a list of
+    # the names students to avoid?
+    BOOL_FIELDS = ('tutor_on_own', 'on_own', 'avoid_student',
+                   'avoid_tutor', 'good_match')
+    FIELDS = STR_FIELDS + BOOL_FIELDS
 
-    def __init__(self,
-                 date, session,
-                 tutor_first, tutor_last,
-                 student,
-                 tutor_on_own, on_own, avoid_student, avoid_tutor, good_match):
-        self.date          = date
-        self.session       = session
-        self.tutor_first   = tutor_first
-        self.tutor_last    = tutor_last
-        self.student       = student
-        self.tutor_on_own  = tutor_on_own
-        self.on_own        = on_own
-        # Instead of avoid_student being a boolean, should it be a
-        # list of the names students to avoid?
-        self.avoid_student = avoid_student
-        self.avoid_tutor   = avoid_tutor
-        self.good_match    = good_match
+    def __init__(self, *args, **kwargs):
+        for (fld, val) in zip(self.FIELDS, args):
+            setattr(self, fld, val)
+        for fld in kwargs:
+            setattr(self, fld, kwargs[fld])
 
     @classmethod
-    def csv_header(cls):
-        return ','.join(cls.HEADER)
+    def to_header(fieldname):
+        ' '.join(f.title() for f in fieldname.split('_'))
+
+    @classmethod
+    def from_header(fieldname):
+        '_'.join(f.lower() for f in fieldname.split(' '))
+
+    @classmethod
+    def csv_header(cls, delim=','):
+        return delim.join(cls.to_header(f) for f in cls.FIELDS)
 
     @classmethod
     def csv_bool(cls, val):
         return 'TRUE' if val else ''
 
-    def to_csv(self):
-        return ','.join(str(s) for s in (self.date,
-                                         self.session,
-                                         self.tutor_first,
-                                         self.tutor_last,
-                                         self.student,
-                                         self.csv_bool(self.tutor_on_own),
-                                         self.csv_bool(self.on_own),
-                                         self.csv_bool(self.avoid_student),
-                                         self.csv_bool(self.avoid_tutor),
-                                         self.csv_bool(self.good_match)))
+    def to_csv(self, delim=','):
+        return delim.join(
+            str(self.csv_bool(getattr(self, f))
+                if f in self.BOOL_FIELDS
+                else getattr(self, f))
+            for f in self.FIELDS)
+
+    @classmethod
+    def from_csv(cls, header, line, delim=','):
+        flds = {}
+        for (fld, val) in zip(header.split(delim), line.split(delim)):
+            fld = cls.from_header(fld)
+            if fld in cls.BOOL_FIELDS:
+                val = val == 'TRUE'
+            flds[fld] = val
+        return cls(**flds)
 
     @property
     def tutor(self):
@@ -214,7 +260,18 @@ class HistoricalData(object):
     def to_csv(self):
         return '\n'.join([Pair.csv_header()] +
                          [pair.to_csv()
-                          for pair in self.data])
+                          for pair in
+                          sorted(self.data,
+                                 key=operator.attrgetter('session',
+                                                         'date',
+                                                         'tutor',
+                                                         'student'))])
+
+    def from_csv(self, filename):
+        with open(filename) as fd:
+            for line in fd:
+                pass
+
 
     @classmethod
     def pairing_by_tutor(cls, pairing):
@@ -395,12 +452,16 @@ class ParseManualFile(object):
                             logging.info('Missed one? "{0}" -- {1}, {2} {3} {4} {5}'.
                                          format(student, val, session,
                                                 tutor_first, tutor_last, date))
-                        data.append(Pair(date, session, tutor_first,
-                                         tutor_last, student,
-                                         tutor_on_own, on_own,
-                                         avoid_student,
-                                         avoid_tutor,
-                                         good_match))
+                        data.append(Pair(date=date,
+                                         session=session,
+                                         tutor_first=tutor_first,
+                                         tutor_last=tutor_last,
+                                         student=student,
+                                         tutor_on_own=tutor_on_own,
+                                         on_own=on_own,
+                                         avoid_student=avoid_student,
+                                         avoid_tutor=avoid_tutor,
+                                         good_match=good_match))
                 last_fld = fld
         return data
 
@@ -432,6 +493,11 @@ class ScoreParams(object):
                                  "should be one of {1}".
                                  format(kwarg,
                                         ', '.join(self.PARAMS)))
+
+    def to_csv(self):
+        return '\n'.join(
+            ','.join((param, str(getattr(self, param))))
+            for param in self.PARAMS)
 
 def get_group_score(hist, tutor, students, params=None, **kwargs):
     if params is None:
