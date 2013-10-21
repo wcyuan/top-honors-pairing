@@ -139,9 +139,14 @@ def make_files(hist, params):
     with open('data/Parameters.csv', 'w') as fd:
         fd.write(params.to_csv())
         fd.write("\n")
+    if (params != ScoreParams.from_csv('data/Parameters.csv')):
+        print ScoreParams.from_csv('data/Parameters.csv').to_csv()
+        raise RuntimeError("Error dumping parameters")
     with open('data/HistoricalPairings.csv', 'w') as fd:
         fd.write(hist.to_csv())
         fd.write("\n")
+    if (hist != HistoricalData().from_csv('data/HistoricalPairings.csv')):
+        raise RuntimeError("Error dumping historical data")
     with open('Attendance.csv', 'w') as fd: 
         students = set([p.student for p in hist.data])
         tutors = set([p.tutor for p in hist.data if p.tutor.strip() != ''])
@@ -201,26 +206,47 @@ def run_pairing_code(date, session,
 # -------------------------------------------------------
 
 class Pair(object):
-    STR_FIELDS  = ('date', 'session', 'tutor_first', 'tutor_last', 'student')
+    INT_FIELDS  = ('date',)
+    STR_FIELDS  = ('session', 'tutor_first', 'tutor_last', 'student')
     # Instead of avoid_student being a boolean, should it be a list of
     # the names students to avoid?
     BOOL_FIELDS = ('tutor_on_own', 'on_own', 'avoid_student',
                    'avoid_tutor', 'good_match')
-    FIELDS = STR_FIELDS + BOOL_FIELDS
+    FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
 
     def __init__(self, *args, **kwargs):
         for (fld, val) in zip(self.FIELDS, args):
             setattr(self, fld, val)
         for fld in kwargs:
             setattr(self, fld, kwargs[fld])
+        for fld in self.FIELDS:
+            if not hasattr(self, fld):
+                raise ValueError("No value provided for field {0} ({1} {2})".
+                                 format(fld, args, kwargs))
+
+    def __eq__(self, other):
+        if self.FIELDS != other.FIELDS:
+            logging.debug("list of fields doesn't match")
+            return False
+        for f in self.FIELDS:
+            mine = getattr(self, f)
+            theirs = getattr(other, f)
+            if mine != theirs:
+                logging.debug("Field %s: mine %s != theirs %s",
+                              f, mine, theirs)
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not (self == other)
 
     @classmethod
-    def to_header(fieldname):
-        ' '.join(f.title() for f in fieldname.split('_'))
+    def to_header(cls, fieldname):
+        return ' '.join(f.title() for f in fieldname.split('_'))
 
     @classmethod
-    def from_header(fieldname):
-        '_'.join(f.lower() for f in fieldname.split(' '))
+    def from_header(cls, fieldname):
+        return '_'.join(f.lower() for f in fieldname.split(' '))
 
     @classmethod
     def csv_header(cls, delim=','):
@@ -238,12 +264,21 @@ class Pair(object):
             for f in self.FIELDS)
 
     @classmethod
+    def from_csv_field(cls, fld, val):
+        if fld in cls.BOOL_FIELDS:
+            return val == 'TRUE'
+        if fld in cls.INT_FIELDS:
+            return int(val)
+        return val
+
+    @classmethod
     def from_csv(cls, header, line, delim=','):
         flds = {}
+        header = header.rstrip()
+        line = line.rstrip()
         for (fld, val) in zip(header.split(delim), line.split(delim)):
             fld = cls.from_header(fld)
-            if fld in cls.BOOL_FIELDS:
-                val = val == 'TRUE'
+            val = cls.from_csv_field(fld, val)
             flds[fld] = val
         return cls(**flds)
 
@@ -255,6 +290,14 @@ class HistoricalData(object):
     def __init__(self, data=None):
         self.data = [] if data is None else data
         self._data_by_tutor = None
+
+    def __eq__(self, other):
+        order = ('session', 'date', 'tutor', 'student')
+        return (sorted(self.data, key=operator.attrgetter(*order)) ==
+                sorted(other.data, key=operator.attrgetter(*order)))
+
+    def __ne__(self, other):
+        return not (self == other)
 
     def to_csv(self):
         return '\n'.join([Pair.csv_header()] +
@@ -271,11 +314,13 @@ class HistoricalData(object):
         with open(filename) as fd:
             header = None
             for line in fd:
+                line = line.rstrip()
                 if header is None:
                     header = line
                     continue
                 pairings.append(Pair.from_csv(header, line))
         self.add_pairings(pairings)
+        return self
 
     @classmethod
     def pairing_by_tutor(cls, pairing):
@@ -507,7 +552,27 @@ class ScoreParams(object):
     @classmethod
     def from_csv(cls, filename):
         with open(filename) as fd:
-            return cls(**dict(line.split(',') for line in fd))
+            vals = {}
+            for line in fd:
+                (fld, val) = line.split(',')
+                vals[fld] = int(val)
+        return cls(**vals)
+
+    def __eq__(self, other):
+        if self.PARAMS != other.PARAMS:
+            logging.debug("list of params doesn't match")
+            return False
+        for p in self.PARAMS:
+            mine = getattr(self, p)
+            theirs = getattr(other, p)
+            if mine != theirs:
+                logging.debug("Param %s: mine %s != theirs %s".
+                              p, mine, theirs)
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not (self == other)
 
 def get_group_score(hist, tutor, students, params=None, **kwargs):
     if params is None:
