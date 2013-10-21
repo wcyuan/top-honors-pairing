@@ -47,14 +47,18 @@ HistoricalData is the set of all past Pairings.
      csv files for input and output
      data directory -- holds historical data and log
    - the py scripts are links to a single script that acts based on
-     its name and cwd.
+     its name and cwd?
 
  - plan:
- figure out the new format -- how to represent compatibility info?
- create a class for reading/writing a new format
- reformat the historical data into sample data
- create Windows shortcuts to run on the sample data (each value in the API)
- put things on dropbox/git
+ [x] figure out the new format -- how to represent compatibility info?
+ [x] put things on dropbox/git
+ [x] create a class for reading/writing a new format
+ [x] reformat the historical data into sample data
+ [ ] create scripts to run on the sample data (each value in the API)
+ [ ] clean up code organization (break into several files,
+     separate main from functions)
+ [ ] work more on validation
+ [ ] add comments, docstrings
 
  - maybe/somday?
  python gui?
@@ -84,14 +88,16 @@ logging.basicConfig(format='[%(asctime)s '
 
 def main():
     opts = getopts()
-    given_params = dict((k, getattr(opts, k))
-                        for k in ScoreParams.PARAMS
-                        if hasattr(opts, k))
-    params = ScoreParams(**given_params)
-    hist = get_2012_data()
     if opts.make_files:
+        params = ScoreParams()
+        hist = get_2012_data()
         make_files(hist, params)
-    else:
+    elif opts.run_2012:
+        given_params = dict((k, getattr(opts, k))
+                            for k in ScoreParams.PARAMS
+                            if hasattr(opts, k))
+        params = ScoreParams(**given_params)
+        hist = get_2012_data()
         run_pairing_code(opts.date,
                          opts.session,
                          hist=hist,
@@ -113,6 +119,9 @@ def getopts():
     parser.add_option('--make_files',
                       action='store_true',
                       help='make initial csv files')
+    parser.add_option('--run_2012',
+                      action='store_true',
+                      help='run for 2012, expecting data to be in the cwd')
     for param in ScoreParams.PARAMS:
         parser.add_option('--' + param,
                           default=ScoreParams.PARAMS[param])
