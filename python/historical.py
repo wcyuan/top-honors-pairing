@@ -26,11 +26,13 @@ HistoricalData is the set of all past Pairings.
  score the given pairing
  set compatibility information
  validate (make sure no names are misspelled, that the format is ok, etc)
+ score past data
 
  - data layout: many separate files
-   - input attendance
-   - historical data
    - score parameters
+   - historical data
+   - input attendance
+   - current pairing
    - a run log
    - a bitbucket git repo inside of a dropbox shared folder (?)
      - stores everything (including data)?  or just the code?
