@@ -28,8 +28,8 @@ HistoricalData is the set of all past Pairings.
  validate (make sure no names are misspelled, that the format is ok, etc)
  save the given pairing to historical data
  - Extended API
- Given a past date, populate the 'current pairing' with the pairing
-   from that date, with the score
+ Given a past date, populate the 'input attendance' and 'current
+ pairing' with the data from that date (with the score and explanation)
 
  - data layout: many separate files
    - score parameters
@@ -62,6 +62,8 @@ HistoricalData is the set of all past Pairings.
 
 """
 # -------------------------------------------------------
+# Imports
+#
 
 from __future__ import absolute_import, division, with_statement
 
@@ -73,6 +75,8 @@ import optparse
 import re
 
 # -------------------------------------------------------
+# Main + command line parsing
+#
 
 logging.basicConfig(format='[%(asctime)s '
                     '%(funcName)s:%(lineno)s %(levelname)-5s] '
@@ -127,6 +131,9 @@ def getopts():
     return opts
 
 # -------------------------------------------------------
+# These functions capture the real main code.  Main is just a switch
+# around either run_pairing_code or make_files
+#
 
 def make_files(hist, params):
     """
@@ -204,8 +211,17 @@ def run_pairing_code(date, session,
     diff_pairings(actual, best, actual_ann, best_ann)
 
 # -------------------------------------------------------
+# Pair and HistoricalData
+#
+# These are the heart of the data representation
+#
 
 class Pair(object):
+    """
+    A Pair represents one student paired with one tutor on one week.
+    (If the same tutor has N students at once, that would be
+    represented as N Pairs)
+    """
     INT_FIELDS  = ('date',)
     STR_FIELDS  = ('session', 'tutor_first', 'tutor_last', 'student')
     # Instead of avoid_student being a boolean, should it be a list of
@@ -287,6 +303,10 @@ class Pair(object):
         return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
 class HistoricalData(object):
+    """
+    Historical Data captures all past pairings.  It is basically just
+    a list of Pairs.
+    """
     def __init__(self, data=None):
         self.data = [] if data is None else data
         self._data_by_tutor = None
@@ -381,8 +401,14 @@ class HistoricalData(object):
         return sorted(set([d.tutor for d in self.data]))
 
 # --------------------------------------------------------------------
+# ParseManualFile
+#
 
 class ParseManualFile(object):
+    """
+    Class for parsing the old excel spreadsheet.  This doesn't work
+    perfectly because nothing validated the old format.
+    """
     @classmethod
     def parse_date(cls, column_name, start_year=2012):
         """
@@ -523,6 +549,8 @@ def get_2012_data():
     return HistoricalData(data)
 
 # --------------------------------------------------------------------
+# Functions to score a pairing
+#
 
 class ScoreParams(object):
     PARAMS = {'award_past_work'          : 1,
@@ -721,6 +749,9 @@ def score_historical(hist, date, session, params=None):
     return get_score(actual, past_data, params)
 
 # --------------------------------------------------------------------
+# Functions to find the pairing with the highest score, either for a
+# list of students and tutors, or for a historical date
+#
 
 def good_pairing(hist, students, tutors, params=None):
     """
@@ -759,6 +790,8 @@ def good_historical_score(hist, date, session, params=None):
     return good_pairing(past_data, students, tutors, params)
 
 # --------------------------------------------------------------------
+# Functions to print or compare pairings
+#
 
 def print_pairing(pairing, annotations=None):
     by_tutor = HistoricalData.pairing_by_tutor(pairing)
