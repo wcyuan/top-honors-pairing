@@ -171,8 +171,8 @@ def make_files(hist, params):
     if (hist != HistoricalData().from_csv('data/HistoricalPairings.csv')):
         raise RuntimeError("Error dumping historical data")
     with open('Attendance.csv', 'w') as fd:
-        students = set([p.student for p in hist.data])
-        tutors = set([p.tutor for p in hist.data if p.tutor.strip() != ''])
+        students = hist.all_students
+        tutors = hist.all_tutors
         fd.write(','.join(('Student', '', 'Tutor', '')))
         fd.write("\n")
         for (student, tutor) in itertools.izip_longest(students,
@@ -232,19 +232,16 @@ def run_pairing_code(date, session,
 # These are the heart of the data representation
 #
 
-class Pair(object):
+class CsvObject(object):
     """
-    A Pair represents one student paired with one tutor on one week.
-    (If the same tutor has N students at once, that would be
-    represented as N Pairs)
+    A CsvObject is an abstract base class for an object that can be
+    serialized to a csv file.
     """
-    INT_FIELDS  = ('date',)
-    STR_FIELDS  = ('session', 'tutor_first', 'tutor_last', 'student')
-    # Instead of avoid_student being a boolean, should it be a list of
-    # the names students to avoid?
-    BOOL_FIELDS = ('tutor_on_own', 'on_own', 'avoid_student',
-                   'avoid_tutor', 'good_match')
+    INT_FIELDS  = ()
+    STR_FIELDS  = ()
+    BOOL_FIELDS = ()
     FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
+    DEFAULTS = {}
 
     def __init__(self, *args, **kwargs):
         for (fld, val) in zip(self.FIELDS, args):
@@ -253,8 +250,12 @@ class Pair(object):
             setattr(self, fld, kwargs[fld])
         for fld in self.FIELDS:
             if not hasattr(self, fld):
-                raise ValueError("No value provided for field {0} ({1} {2})".
-                                 format(fld, args, kwargs))
+                if fld in self.DEFAULTS:
+                    setattr(self, fld, self.DEFAULTS[fld])
+                else:
+                    raise ValueError("No value provided for field "
+                                     "{0} ({1} {2})".
+                                     format(fld, args, kwargs))
 
     def __eq__(self, other):
         if self.FIELDS != other.FIELDS:
@@ -314,39 +315,48 @@ class Pair(object):
             flds[fld] = val
         return cls(**flds)
 
+class Pair(CsvObject):
+    """
+    A Pair represents one student paired with one tutor on one week.
+    (If the same tutor has N students at once, that would be
+    represented as N Pairs)
+    """
+    INT_FIELDS  = ('date',)
+    STR_FIELDS  = ('session', 'tutor_first', 'tutor_last',
+                   'student', 'topic')
+    # Instead of avoid_student being a boolean, should it be a list of
+    # the names students to avoid?
+    BOOL_FIELDS = ('tutor_on_own', 'on_own', 'avoid_student',
+                   'avoid_tutor', 'good_match')
+    FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
+    DEFAULTS = {'topic' : ''}
+
     @property
     def tutor(self):
         return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
-class HistoricalData(object):
-    """
-    Historical Data captures all past pairings.  It is basically just
-    a list of Pairs.
-    """
+class CsvList(object):
+    OBJ_CLASS = CsvObject
+    ORDER = OBJ_CLASS.FIELDS
+
     def __init__(self, data=None):
         self.data = [] if data is None else data
-        self._data_by_tutor = None
 
     def __eq__(self, other):
-        order = ('session', 'date', 'tutor', 'student')
-        return (sorted(self.data, key=operator.attrgetter(*order)) ==
-                sorted(other.data, key=operator.attrgetter(*order)))
+        return (sorted(self.data, key=operator.attrgetter(*self.ORDER)) ==
+                sorted(other.data, key=operator.attrgetter(*self.ORDER)))
 
     def __ne__(self, other):
         return not (self == other)
 
     def to_csv(self):
-        return '\n'.join([Pair.csv_header()] +
-                         [pair.to_csv()
-                          for pair in
+        return '\n'.join([self.OBJ_CLASS.csv_header()] +
+                         [obj.to_csv()
+                          for obj in
                           sorted(self.data,
-                                 key=operator.attrgetter('session',
-                                                         'date',
-                                                         'tutor',
-                                                         'student'))])
+                                 key=operator.attrgetter(*self.ORDER))])
 
     def from_csv(self, filename):
-        pairings = []
         with open(filename) as fd:
             header = None
             for line in fd:
@@ -354,9 +364,23 @@ class HistoricalData(object):
                 if header is None:
                     header = line
                     continue
-                pairings.append(Pair.from_csv(header, line))
-        self.add_pairings(pairings)
+                self.data.append(self.OBJ_CLASS.from_csv(header, line))
         return self
+
+class HistoricalData(CsvList):
+    """
+    Historical Data captures all past pairings.  It is basically just
+    a list of Pairs.
+    """
+    OBJ_CLASS = Pair
+    ORDER = ('session', 'date', 'tutor', 'student')
+    def __init__(self, data=None):
+        self._data_by_tutor = None
+        super(HistoricalData, self).__init__(data)
+
+    def from_csv(self, filename):
+        self._data_by_tutor = None
+        return super(HistoricalData, self).from_csv(filename)
 
     @classmethod
     def pairing_by_tutor(cls, pairing):
@@ -415,6 +439,28 @@ class HistoricalData(object):
     @property
     def all_tutors(self):
         return sorted(set([d.tutor for d in self.data]))
+
+# --------------------------------------------------------------------
+
+class Student(CsvObject):
+    INT_FIELDS = ('grade',)
+    STR_FIELDS  = ('name', 'initial_assessment')
+    # Instead of avoid_student being a boolean, should it be a list of
+    # the names students to avoid?
+    BOOL_FIELDS = ('is_male',)
+    FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
+
+class StudentList(CsvList):
+    OBJ_CLASS = Student
+    ORDER = Student.FIELDS
+
+class Tutor(CsvObject):
+    STR_FIELDS  = ('name')
+    FIELDS = STR_FIELDS
+
+class Tutors(CsvList):
+    OBJ_CLASS = Tutor
+    ORDER = Tutor.FIELDS
 
 # --------------------------------------------------------------------
 # ParseManualFile
