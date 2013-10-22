@@ -182,6 +182,21 @@ def make_files(hist, params):
             fd.write("\n")
     with open('Pairing.csv', 'w') as fd:
         fd.write('')
+    with open('data/Students.csv', 'w') as fd:
+        stds = Students(Student(name=n) for n in hist.all_students)
+        fd.write(stds.to_csv())
+        fd.write("\n")
+        if stds != Students().from_csv('data/Students.csv'):
+            raise RuntimeError("Error dumping student data")
+    with open('data/Tutors.csv', 'w') as fd:
+        tuts = Tutors(Tutor(first=t[0],
+                            last=t[1]) for t in
+                      set((p.tutor_first, p.tutor_last) for p in hist.data))
+        fd.write(tuts.to_csv())
+        fd.write("\n")
+        if stds != Tutors().from_csv('data/Tutors.csv'):
+            raise RuntimeError("Error dumping tutor data")
+
 
 # -------------------------------------------------------
 
@@ -443,20 +458,23 @@ class HistoricalData(CsvList):
 # --------------------------------------------------------------------
 
 class Student(CsvObject):
-    INT_FIELDS = ('grade',)
-    STR_FIELDS  = ('name', 'initial_assessment')
-    # Instead of avoid_student being a boolean, should it be a list of
-    # the names students to avoid?
-    BOOL_FIELDS = ('is_male',)
-    FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
+    STR_FIELDS  = ('name', 'initial_assessment', 'gender', 'grade')
+    BOOL_FIELDS = ('is_active',)
+    FIELDS = STR_FIELDS + BOOL_FIELDS
+    DEFAULTS = {'initial_assessment' : '',
+                'gender' : '',
+                'grade' : '',
+                'is_active' : True}
 
-class StudentList(CsvList):
+class Students(CsvList):
     OBJ_CLASS = Student
     ORDER = Student.FIELDS
 
 class Tutor(CsvObject):
-    STR_FIELDS  = ('name')
+    STR_FIELDS  = ('first', 'last')
+    BOOL_FIELDS = ('is_active',)
     FIELDS = STR_FIELDS
+    DEFAULTS = {'is_active': True}
 
 class Tutors(CsvList):
     OBJ_CLASS = Tutor
