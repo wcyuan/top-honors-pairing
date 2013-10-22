@@ -59,12 +59,15 @@ HistoricalData is the set of all past Pairings.
  [x] put things on dropbox/git
  [x] create a class for reading/writing a new format
  [x] reformat the historical data into sample data
- [ ] Add "topic" to Pairings, add student/tutor list
+ [x] Add 'topic' to Pairings, add student/tutor list
  [ ] create scripts to run on the sample data (each value in the API)
+
+ - next steps:
+ [ ] Add 'topic' to scoring function
+ [ ] work more on validation
  [ ] Address issues in parsing the old manual file
  [ ] clean up code organization (break into several files,
      separate main from functions)
- [ ] work more on validation
  [ ] add comments, docstrings
 
  - maybe/somday?
@@ -147,6 +150,41 @@ def getopts():
     return opts
 
 # -------------------------------------------------------
+# These functions capture the API for running pairing
+#
+
+def make_attendance_sheet():
+    hist = HistoricalData().from_csv('data/HistoricalPairings.csv')
+    stds = Students().from_csv('data/Students.csv')
+    tuts = Tutors().from_csv('data/Tutors.csv')
+    with open('Attendance.csv', 'w') as fd:
+        fd.write(','.join(('Student', '', 'Tutor', '')))
+        fd.write("\n")
+        for (student, tutor) in itertools.izip_longest(
+                std.get_matches(is_active=True),
+                tuts.get_matches(is_active=True),
+                fillvalue=''):
+            fd.write(','.join((student.name, '',
+                               tutor.first + ' ' + tutor.last, '')))
+            fd.write("\n")
+
+def run_pairing():
+    hist = HistoricalData().from_csv('data/HistoricalPairings.csv')
+    stds = Students().from_csv('data/Students.csv')
+    tuts = Tutors().from_csv('data/Tutors.csv')
+    params = ScoreParams.from_csv('data/Parameters.csv')
+    # convert stds and tuts to names
+    pairing = good_pairing(hist, stds, tuts, params)
+    # get score
+    # output to a file
+
+def score_pairing():
+    pass
+
+def save_pairing():
+    pass
+
+# -------------------------------------------------------
 # These functions capture the real main code.  Main is just a switch
 # around either run_pairing_code or make_files
 #
@@ -186,17 +224,16 @@ def make_files(hist, params):
         stds = Students(Student(name=n) for n in hist.all_students)
         fd.write(stds.to_csv())
         fd.write("\n")
-        if stds != Students().from_csv('data/Students.csv'):
-            raise RuntimeError("Error dumping student data")
+    if stds != Students().from_csv('data/Students.csv'):
+        raise RuntimeError("Error dumping student data")
     with open('data/Tutors.csv', 'w') as fd:
-        tuts = Tutors(Tutor(first=t[0],
-                            last=t[1]) for t in
-                      set((p.tutor_first, p.tutor_last) for p in hist.data))
+        tuts = Tutors(Tutor(first=t[0], last=t[1])
+                      for t in set((p.tutor_first, p.tutor_last)
+                                   for p in hist.data))
         fd.write(tuts.to_csv())
         fd.write("\n")
-        if stds != Tutors().from_csv('data/Tutors.csv'):
-            raise RuntimeError("Error dumping tutor data")
-
+    if tuts != Tutors().from_csv('data/Tutors.csv'):
+        raise RuntimeError("Error dumping tutor data")
 
 # -------------------------------------------------------
 
@@ -382,6 +419,11 @@ class CsvList(object):
                 self.data.append(self.OBJ_CLASS.from_csv(header, line))
         return self
 
+    def get_matches(self, **kwargs):
+        return [d for d in self.data
+                if all(getattr(d, fld) == kwargs[fld]
+                       for fld in kwargs)]
+
 class HistoricalData(CsvList):
     """
     Historical Data captures all past pairings.  It is basically just
@@ -429,6 +471,9 @@ class HistoricalData(CsvList):
         return HistoricalData([d for d in self.data
                                if d.date < date and d.session == session])
 
+    # This get_matches has the same functionality as
+    # CsvList.get_matches, but it's much faster, and this gets called
+    # so much that speeding it up a little makes a big differences.
     def get_matches(self,
                     tutor=None,
                     student=None,
