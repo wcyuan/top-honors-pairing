@@ -158,7 +158,7 @@ def make_attendance_sheet():
     stds = Students().from_csv('data/Students.csv')
     tuts = Tutors().from_csv('data/Tutors.csv')
     with open('Attendance.csv', 'w') as fd:
-        fd.write(','.join(('Student', '', 'Tutor', '')))
+        fd.write(','.join(('Student', '', 'Tutor', '', 'Topic')))
         fd.write("\n")
         for (student, tutor) in itertools.izip_longest(
                 std.get_matches(is_active=True),
@@ -172,7 +172,11 @@ def run_pairing():
     hist = HistoricalData().from_csv('data/HistoricalPairings.csv')
     stds = Students().from_csv('data/Students.csv')
     tuts = Tutors().from_csv('data/Tutors.csv')
+    # Read attendance
+    #stds = Students().from_csv('data/Students.csv')
     params = ScoreParams.from_csv('data/Parameters.csv')
+
+    # Match attendance with students
     # convert stds and tuts to names
     pairing = good_pairing(hist, stds, tuts, params)
     # get score
@@ -390,9 +394,12 @@ class Pair(CsvObject):
 class CsvList(object):
     OBJ_CLASS = CsvObject
     ORDER = OBJ_CLASS.FIELDS
+    BY_KEY = False
+    KEY_UNIQUE = False
 
     def __init__(self, data=None):
         self.data = [] if data is None else data
+        self._data_by_key = None
 
     def __eq__(self, other):
         return (sorted(self.data, key=operator.attrgetter(*self.ORDER)) ==
@@ -416,13 +423,47 @@ class CsvList(object):
                 if header is None:
                     header = line
                     continue
-                self.data.append(self.OBJ_CLASS.from_csv(header, line))
+                self.add(self.OBJ_CLASS.from_csv(header, line))
         return self
 
     def get_matches(self, **kwargs):
         return [d for d in self.data
                 if all(getattr(d, fld) == kwargs[fld]
                        for fld in kwargs)]
+
+    def add(self, obj):
+        self._data_by_key = None
+        self.data.append(obj)
+
+    def add_list(self, obj_list):
+        self._data_by_key = None
+        self.data.extend(obj_list)
+
+    @classmethod
+    def key_func(self, obj):
+        # Not implemented
+        return None
+
+    @property
+    def data_by_key(self):
+        if not self.BY_KEY:
+            return None
+        if self._data_by_key is None:
+            if self.KEY_UNIQUE:
+                self._data_by_key = {}
+            else:
+                self._data_by_key = collections.defaultdict(list)
+            for obj in self.data:
+                key = self.key_func(obj)
+                if self.KEY_UNIQUE:
+                    if key in self._data_by_key:
+                        raise ValueError(
+                            "Multiple {0} objects with the same key {1}".
+                            format(self.OBJ_CLASS.__name__, key))
+                    self._data_by_key[key] = obj
+                else:
+                    self._data_by_key[key].append(obj)
+        return self._data_by_key
 
 class HistoricalData(CsvList):
     """
@@ -431,13 +472,14 @@ class HistoricalData(CsvList):
     """
     OBJ_CLASS = Pair
     ORDER = ('session', 'date', 'tutor', 'student')
+    BY_KEY = True
+
     def __init__(self, data=None):
-        self._data_by_tutor = None
         super(HistoricalData, self).__init__(data)
 
-    def from_csv(self, filename):
-        self._data_by_tutor = None
-        return super(HistoricalData, self).from_csv(filename)
+    @classmethod
+    def key_func(self, pair):
+        return (pair.date, pair.tutor)
 
     @classmethod
     def pairing_by_tutor(cls, pairing):
@@ -450,17 +492,12 @@ class HistoricalData(CsvList):
             by_tutor[tutor].append(student)
         return by_tutor
 
-    def add_pairings(self, pairings):
-        self._data_by_tutor = None
-        self.data.extend(pairings)
+    def add_pairs(self, pairs):
+        self.add_list(pairs)
 
     @property
     def data_by_tutor(self):
-        if self._data_by_tutor is None:
-            self._data_by_tutor = collections.defaultdict(list)
-            for pair in self.data:
-                self._data_by_tutor[(pair.date, pair.tutor)].append(pair)
-        return self._data_by_tutor
+        return self.data_by_key
 
     def get_pairing(self, date, session):
         return [(d.tutor, d.student)
@@ -472,8 +509,8 @@ class HistoricalData(CsvList):
                                if d.date < date and d.session == session])
 
     # This get_matches has the same functionality as
-    # CsvList.get_matches, but it's much faster, and this gets called
-    # so much that speeding it up a little makes a big differences.
+    # CsvList.get_matches, but it's much faster.  This gets called a
+    # lot, so speeding it up a little makes a big difference.
     def get_matches(self,
                     tutor=None,
                     student=None,
@@ -514,16 +551,29 @@ class Student(CsvObject):
 class Students(CsvList):
     OBJ_CLASS = Student
     ORDER = Student.FIELDS
+    BY_KEY = True
+    KEY_UNIQUE = True
+    @classmethod
+    def key_func(cls, s):
+        return s.name
 
 class Tutor(CsvObject):
     STR_FIELDS  = ('first', 'last')
     BOOL_FIELDS = ('is_active',)
     FIELDS = STR_FIELDS
     DEFAULTS = {'is_active': True}
+    @property
+    def full_name(self):
+        return ' '.join((t.first, t.last))
 
 class Tutors(CsvList):
     OBJ_CLASS = Tutor
     ORDER = Tutor.FIELDS
+    BY_KEY = True
+    KEY_UNIQUE = True
+    @classmethod
+    def key_func(cls, t):
+        return t.full_name
 
 # --------------------------------------------------------------------
 # ParseManualFile
