@@ -165,20 +165,12 @@ def getopts():
 # These functions capture the API for running pairing
 #
 
-def make_attendance_sheet():
-    hist = HistoricalData().from_csv(HIST_FILE)
-    stds = Students().from_csv(STUDENT_FILE)
-    tuts = Tutors().from_csv(TUTOR_FILE)
-    with open(ATTENDANCE_FILE, 'w') as fd:
-        fd.write(','.join(('Student', '', 'Tutor', '', 'Topic')))
-        fd.write("\n")
-        for (student, tutor) in itertools.izip_longest(
-                std.get_matches(is_active=True),
-                tuts.get_matches(is_active=True),
-                fillvalue=''):
-            fd.write(','.join((student.name, '',
-                               tutor.first + ' ' + tutor.last, '')))
-            fd.write("\n")
+def make_attendance_sheet(date=None):
+    Attendance.to_csv(ATTENDANCE_FILE,
+                      Students().from_csv(STUDENT_FILE),
+                      Tutors().from_csv(TUTOR_FILE),
+                      HistoricalData().from_csv(HIST_FILE),
+                      date=date)
 
 def run_pairing():
     hist = HistoricalData().from_csv(HIST_FILE)
@@ -656,6 +648,10 @@ class Attendance(object):
                                    tutor.full_name, '',
                                    topic)))
                 fd.write("\n")
+
+    @classmethod
+    def from_csv(cls, filename):
+        pass
 
 # --------------------------------------------------------------------
 # ParseManualFile
