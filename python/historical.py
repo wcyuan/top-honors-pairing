@@ -76,7 +76,7 @@ HistoricalData is the set of all past Pairings.
 
 """
 # -------------------------------------------------------
-# Imports
+# Imports and Constants
 #
 
 from __future__ import absolute_import, division, with_statement
@@ -87,6 +87,18 @@ import logging
 import operator
 import optparse
 import re
+
+# Input
+ATTENDANCE_FILE = 'Attendance.csv'
+
+# Output
+PAIRING_FILE = 'Pairing.csv'
+
+# Auxiliary Data
+STUDENT_FILE = 'data/Students.csv'
+TUTOR_FILE   = 'data/Tutors.csv'
+HIST_FILE    = 'data/HistoricalPairings.csv'
+PARAM_FILE   = 'data/Parameters.csv'
 
 # -------------------------------------------------------
 # Main + command line parsing
@@ -154,10 +166,10 @@ def getopts():
 #
 
 def make_attendance_sheet():
-    hist = HistoricalData().from_csv('data/HistoricalPairings.csv')
-    stds = Students().from_csv('data/Students.csv')
-    tuts = Tutors().from_csv('data/Tutors.csv')
-    with open('Attendance.csv', 'w') as fd:
+    hist = HistoricalData().from_csv(HIST_FILE)
+    stds = Students().from_csv(STUDENT_FILE)
+    tuts = Tutors().from_csv(TUTOR_FILE)
+    with open(ATTENDANCE_FILE, 'w') as fd:
         fd.write(','.join(('Student', '', 'Tutor', '', 'Topic')))
         fd.write("\n")
         for (student, tutor) in itertools.izip_longest(
@@ -169,12 +181,12 @@ def make_attendance_sheet():
             fd.write("\n")
 
 def run_pairing():
-    hist = HistoricalData().from_csv('data/HistoricalPairings.csv')
-    stds = Students().from_csv('data/Students.csv')
-    tuts = Tutors().from_csv('data/Tutors.csv')
+    hist = HistoricalData().from_csv(HIST_FILE)
+    stds = Students().from_csv(STUDENT_FILE)
+    tuts = Tutors().from_csv(TUTOR_FILE)
     # Read attendance
-    #stds = Students().from_csv('data/Students.csv')
-    params = ScoreParams.from_csv('data/Parameters.csv')
+    #stds = Students().from_csv(STUDENT_FILE)
+    params = ScoreParams.from_csv(PARAM_FILE)
 
     # Match attendance with students
     # convert stds and tuts to names
@@ -201,18 +213,18 @@ def make_files(hist, params):
      - input attendance
      - current pairing
     """
-    with open('data/Parameters.csv', 'w') as fd:
+    with open(PARAM_FILE, 'w') as fd:
         fd.write(params.to_csv())
         fd.write("\n")
-    if (params != ScoreParams.from_csv('data/Parameters.csv')):
-        print ScoreParams.from_csv('data/Parameters.csv').to_csv()
+    if (params != ScoreParams.from_csv(PARAM_FILE)):
+        print ScoreParams.from_csv(PARAM_FILE).to_csv()
         raise RuntimeError("Error dumping parameters")
-    with open('data/HistoricalPairings.csv', 'w') as fd:
+    with open(HIST_FILE, 'w') as fd:
         fd.write(hist.to_csv())
         fd.write("\n")
-    if (hist != HistoricalData().from_csv('data/HistoricalPairings.csv')):
+    if (hist != HistoricalData().from_csv(HIST_FILE)):
         raise RuntimeError("Error dumping historical data")
-    with open('Attendance.csv', 'w') as fd:
+    with open(ATTENDANCE_FILE, 'w') as fd:
         students = hist.all_students
         tutors = hist.all_tutors
         fd.write(','.join(('Student', '', 'Tutor', '')))
@@ -222,21 +234,21 @@ def make_files(hist, params):
                                                        fillvalue=''):
             fd.write(','.join((student, '', tutor, '')))
             fd.write("\n")
-    with open('Pairing.csv', 'w') as fd:
+    with open(PAIRING_FILE, 'w') as fd:
         fd.write('')
-    with open('data/Students.csv', 'w') as fd:
+    with open(STUDENT_FILE, 'w') as fd:
         stds = Students(Student(name=n) for n in hist.all_students)
         fd.write(stds.to_csv())
         fd.write("\n")
-    if stds != Students().from_csv('data/Students.csv'):
+    if stds != Students().from_csv(STUDENT_FILE):
         raise RuntimeError("Error dumping student data")
-    with open('data/Tutors.csv', 'w') as fd:
+    with open(TUTOR_FILE, 'w') as fd:
         tuts = Tutors(Tutor(first=t[0], last=t[1])
                       for t in set((p.tutor_first, p.tutor_last)
                                    for p in hist.data))
         fd.write(tuts.to_csv())
         fd.write("\n")
-    if tuts != Tutors().from_csv('data/Tutors.csv'):
+    if tuts != Tutors().from_csv(TUTOR_FILE):
         raise RuntimeError("Error dumping tutor data")
 
 # -------------------------------------------------------
@@ -431,6 +443,29 @@ class CsvList(object):
                 if all(getattr(d, fld) == kwargs[fld]
                        for fld in kwargs)]
 
+    def best_matches(self, sort_by, key_func, skip_if=None):
+        """
+        If you divide the objects into classes, then return a dict
+        which, for each class, maps to the 'best' object in that class,
+        where 'best' means 'comes last when sorted by the sort_by field'.
+
+        The best example is if sort_by = date and key_func = lambda p:
+        p.student, then this returns the most recent pairing for each
+        student.
+        
+        @param sort_by: the name of a field, or a list of fields
+        
+        @param key: a function which, given an instance of OBJ_CLASS,
+        returns the group to put that object into
+
+        @param skip_if: a function which, given an instance of OBJ_CLASS
+        returns True if we should skip that object
+        """
+        return dict((key_func(obj), obj)
+                    for obj in
+                    sorted(self.data, key=operator.attrgetter(sort_by))
+                    if skip_if is None or not skip_if(obj))
+
     def add(self, obj):
         self._data_by_key = None
         self.data.append(obj)
@@ -537,6 +572,34 @@ class HistoricalData(CsvList):
     def all_tutors(self):
         return sorted(set([d.tutor for d in self.data]))
 
+    @property
+    def previous_date(self, date=None):
+        dates = sorted(set([p.date for p in self.data]), reverse=True)
+        if date is None:
+            return dates[0]
+        else:
+            return (d for d in dates if d < date).next()
+
+    def most_recent(self, by_student=False, by_tutor=False, date=None,
+                    criteria=None):
+        """
+        Returns a dict from student -> most recent pair for that student
+        or from tutor -> most recent pair for that tutor
+        or from <any key> -> most recent pair for that key
+        """
+        recent = {}
+        for pair in sorted(self.data, key=operator.attrgetter('date')):
+            if date is not None and pair.date >= date:
+                continue
+            if student is not None:
+                key = pair.student
+            elif tutor is not None:
+                key = pair.tutor
+            elif criteria is not None:
+                key = criteria(pair)
+            recent[key] = pair
+        return recent
+
 # --------------------------------------------------------------------
 
 class Student(CsvObject):
@@ -574,6 +637,25 @@ class Tutors(CsvList):
     @classmethod
     def key_func(cls, t):
         return t.full_name
+
+# --------------------------------------------------------------------
+
+class Attendance(object):
+    @classmethod
+    def to_csv(cls, filename, students, tutors, hist, date=None):
+        recent = hist.most_recent(by_student=True, date=date)
+        with open(ATTENDANCE_FILE, 'w') as fd:
+            fd.write(','.join(('Student', '', 'Tutor', '', 'Topic')))
+            fd.write("\n")
+            for (student, tutor) in itertools.izip_longest(
+                    students.get_matches(is_active=True),
+                    tutors.get_matches(is_active=True),
+                    fillvalue=''):
+                topic = recent[student] if student in recent else ''
+                fd.write(','.join((student.name, '',
+                                   tutor.full_name, '',
+                                   topic)))
+                fd.write("\n")
 
 # --------------------------------------------------------------------
 # ParseManualFile
