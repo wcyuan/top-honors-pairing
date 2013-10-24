@@ -56,16 +56,21 @@ HistoricalData is the set of all past Pairings.
      its name and cwd?
 
  - plan:
- [x] figure out the new format -- how to represent compatibility info?
+ [x] figure out the new data layout
  [x] put things on dropbox/git
- [x] create a class for reading/writing a new format
- [x] reformat the historical data into sample data
- [x] Add 'topic' to Pairings, add student/tutor list
- [ ] create scripts to run on the sample data (each value in the API)
+ [x] create classes for reading/writing data files
+   [x] score parameters
+   [x] historical data
+   [x] student and tutor lists
+     [ ] confirm that all students and tutors in the historical data are valid
+   [x] attendance (including topic)
+   [x] Add 'topic' to attendance and historical data
+   [ ] create layout for pairings
+ [x] Use topic in scoring (untested)
+ [ ] create sample data from last year's historical data
+ [ ] create scripts to run on the sample data, test each step in the API
 
  - next steps:
- [ ] Add 'topic' to scoring function
- [ ] work more on validation
  [ ] Address issues in parsing the old manual file
  [ ] clean up code organization (break into several files,
      separate main from functions)
@@ -180,22 +185,28 @@ def run_pairing():
     params = ScoreParams.from_csv(PARAM_FILE)
     (tutors, students) = Attendance.from_csv(ATTENDANCE_FILE)
 
-    # Confirm that these are recognize tutors and students
+    # Confirm that these are recognized tutors and students
     for tutor in tutors:
         if tutor not in tuts.data_by_key:
-            raise ValueError("Invalid Tutor {0} in {1}".format(tutor, ATTENDANCE_FILE))
+            raise ValueError("Invalid Tutor {0} in {1}".
+                             format(tutor, ATTENDANCE_FILE))
     for student in students:
         if student not in stds.data_by_key:
-            raise ValueError("Invalid Student {0} in {1}".format(tutor, ATTENDANCE_FILE))
+            raise ValueError("Invalid Student {0} in {1}".
+                             format(student, ATTENDANCE_FILE))
+    # XXX Confirm that the historical data has only recognized tutors and
+    # students
+    # XXX Confirm that we have valid topics
     pairing = good_pairing(hist, students.keys(), tutors, students, params)
     # get score
     # output to a file
 
+def save_pairing():
+    pass
+
 def score_pairing():
     pass
 
-def save_pairing():
-    pass
 
 # -------------------------------------------------------
 # These functions capture the real main code.  Main is just a switch
@@ -451,9 +462,9 @@ class CsvList(object):
         The best example is if sort_by = date and key_func = lambda p:
         p.student, then this returns the most recent pairing for each
         student.
-        
+
         @param sort_by: the name of a field, or a list of fields
-        
+
         @param key: a function which, given an instance of OBJ_CLASS,
         returns the group to put that object into
 
@@ -590,9 +601,9 @@ class HistoricalData(CsvList):
         for pair in sorted(self.data, key=operator.attrgetter('date')):
             if date is not None and pair.date >= date:
                 continue
-            if student is not None:
+            if by_student:
                 key = pair.student
-            elif tutor is not None:
+            elif by_tutor:
                 key = pair.tutor
             elif criteria is not None:
                 key = criteria(pair)
@@ -626,7 +637,7 @@ class Tutor(CsvObject):
     DEFAULTS = {'is_active': True}
     @property
     def full_name(self):
-        return ' '.join((t.first, t.last))
+        return ' '.join((self.first, self.last))
 
 class Tutors(CsvList):
     OBJ_CLASS = Tutor
@@ -657,16 +668,31 @@ class Attendance(object):
                 fd.write("\n")
 
     @classmethod
+    def not_present(cls, string):
+        return string.lower() in ('', 'no', 'false', 'n')
+
+    @classmethod
     def from_csv(cls, filename):
         tutors = []
         students = {}
         with open(filename) as fd:
             header = None
             for line in fd:
-                (tutor, tutor_present, student, student_present, topic) = line.split(',')
-                if tutor_present == 'TRUE':
+                line = line.rstrip()
+                if header is None:
+                    header = line
+                    continue
+                (tutor, tutor_present, student,
+                 student_present, topic) = line.split(',')
+                if tutor in tutors:
+                    raise ValueError("Tutor {0} appears multiple times!".
+                                     format(tutor))
+                if not cls.not_present(tutor_present):
                     tutors.append(tutor)
-                if student_present == 'TRUE':
+                if student in students:
+                    raise ValueError("Student {0} appears multiple times!".
+                                     format(student))
+                if not cls.not_present(student_present):
                     students[student] = topic
         return (tutors, students)
 
@@ -674,8 +700,9 @@ class PairingFile(object):
     @classmethod
     def to_csv(cls, filename, pairing, student_topics):
         with open(filename, 'w') as fd:
-            fd.write(','.join(('Tutor', 'Student', 'Topic', 'Score', 'Reason', 'TUTOR_ON_OWN',
-                               'STUDENT_ON_OWN', 'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH')))
+            fd.write(','.join(('Tutor', 'Student', 'Topic', 'Score',
+                               'Reason', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
+                               'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH')))
         pass
 
     @classmethod
