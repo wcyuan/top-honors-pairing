@@ -21,13 +21,12 @@ HistoricalData is the set of all past Pairings.
 
  - API ('-' means run a script, '.' means use excel to edit a csv file)
    - create blank attendance sheet, including the previous topic for
-     each student
+     each student -- prompts for the date
    . (set current attendance for tutors and students, including current topics)
    - run pairing for this week (overwriting anything that's there)
    . (modify the pairing)
    - score the given pairing
    . (set compatibility information)
-   - validate (make sure no names are misspelled, that the format is ok, etc)
    - save the given pairing to historical data
 
  - Extended API
@@ -47,13 +46,13 @@ HistoricalData is the set of all past Pairings.
    - a bitbucket git repo inside of a dropbox shared folder (?)
      - stores everything (including data)?  or just the code?
        or just the code and the historical data?
-       is the data sensitive?  Just use github?
-   - a directory for each year
+       is the data sensitive?
+   - a directory for each session
      a py script for each command
      csv files for input and output
      data directory -- holds historical data and log
-   - the py scripts are links to a single script that acts based on
-     its name and cwd?
+   - the py scripts get session from cwd
+   - date comes from the actual date, or from a line in the Attendance sheet?
 
  - plan:
  [x] figure out the new data layout
@@ -199,7 +198,9 @@ def run_pairing():
     # XXX Confirm that we have valid topics
     pairing = good_pairing(hist, students.keys(), tutors, students, params)
     # get score
+    (score, annotations) = get_score(pairing, hist, students, params=params)
     # output to a file
+    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations)
 
 def save_pairing():
     pass
@@ -698,16 +699,38 @@ class Attendance(object):
 
 class PairingFile(object):
     @classmethod
-    def to_csv(cls, filename, pairing, student_topics):
+    def to_csv(cls, filename, pairing, student_topics, annotations):
         with open(filename, 'w') as fd:
-            fd.write(','.join(('Tutor', 'Student', 'Topic', 'Score',
-                               'Reason', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
-                               'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH')))
-        pass
+            fd.write(','.join(('Tutor', 'Student',
+                               'Topic', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
+                               'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH',
+                               'Reason',)))
+        by_tutor = HistoricalData.pairing_by_tutor(pairing)
+        for tutor in sorted(by_tutor):
+            for student in by_tutor[tutor]:
+                ann = (' | '.join(annotations[(tutor, student)])
+                       if (tutor, student) in annotations
+                       else '')
+                fd.write(','.join((tutor, student, student_topics[student],
+                                   '', '', '', '', '', ann)))
+                fd.write("\n")
 
     @classmethod
-    def from_csv(cls, filename):
-        pass
+    def from_csv(cls, filename, date, session):
+        pairing = []
+        with open(filename) as fd:
+            header = None
+            for line in fd:
+                line = line.rstrip()
+                if header is None:
+                    header = line
+                    continue
+                (tutor, student, topic, tutor_on_own,
+                 student_on_own, avoid_tutor, avoid_student,
+                 good_match, reason) = line.split(',')
+                # XXX validate all fields
+                # XXX make the reason optional
+                # XXX allow columns to move?
 
 # --------------------------------------------------------------------
 # ParseManualFile
