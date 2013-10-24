@@ -177,13 +177,17 @@ def run_pairing():
     hist = HistoricalData().from_csv(HIST_FILE)
     stds = Students().from_csv(STUDENT_FILE)
     tuts = Tutors().from_csv(TUTOR_FILE)
-    # Read attendance
-    #stds = Students().from_csv(STUDENT_FILE)
     params = ScoreParams.from_csv(PARAM_FILE)
+    (tutors, students) = Attendance.from_csv(ATTENDANCE_FILE)
 
-    # Match attendance with students
-    # convert stds and tuts to names
-    pairing = good_pairing(hist, stds, tuts, params)
+    # Confirm that these are recognize tutors and students
+    for tutor in tutors:
+        if tutor not in tuts.data_by_key:
+            raise ValueError("Invalid Tutor {0} in {1}".format(tutor, ATTENDANCE_FILE))
+    for student in students:
+        if student not in stds.data_by_key:
+            raise ValueError("Invalid Student {0} in {1}".format(tutor, ATTENDANCE_FILE))
+    pairing = good_pairing(hist, students.keys(), tutors, students, params)
     # get score
     # output to a file
 
