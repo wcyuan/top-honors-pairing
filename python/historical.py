@@ -670,6 +670,18 @@ class Attendance(object):
                     students[student] = topic
         return (tutors, students)
 
+class PairingFile(object):
+    @classmethod
+    def to_csv(cls, filename, pairing, student_topics):
+        with open(filename, 'w') as fd:
+            fd.write(','.join(('Tutor', 'Student', 'Topic', 'Score', 'Reason', 'TUTOR_ON_OWN',
+                               'STUDENT_ON_OWN', 'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH')))
+        pass
+
+    @classmethod
+    def from_csv(cls, filename):
+        pass
+
 # --------------------------------------------------------------------
 # ParseManualFile
 #
