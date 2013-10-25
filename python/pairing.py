@@ -61,10 +61,10 @@ HistoricalData is the set of all past Pairings.
    [x] score parameters
    [x] historical data
    [x] student and tutor lists
-     [ ] confirm that all students and tutors in the historical data are valid
+     [x] confirm that all students and tutors in the historical data are valid
    [x] attendance (including topic)
    [x] Add 'topic' to attendance and historical data
-   [ ] create layout for pairings
+   [x] create layout for pairings
  [x] Use topic in scoring (untested)
  [ ] create sample data from last year's historical data
  [ ] create scripts to run on the sample data, test each step in the API
@@ -118,9 +118,7 @@ logging.basicConfig(format='[%(asctime)s '
 def main():
     opts = getopts()
     if opts.make_files:
-        params = ScoreParams()
-        hist = get_2012_data()
-        make_files(hist, params)
+        make_files()
     elif opts.run_2012:
         given_params = dict((k, getattr(opts, k))
                             for k in ScoreParams.PARAMS
@@ -214,7 +212,7 @@ def score_pairing():
 # around either run_pairing_code or make_files
 #
 
-def make_files(hist, params):
+def make_files():
     """
     Make the initial version of the following files:
      - score parameters
@@ -222,6 +220,9 @@ def make_files(hist, params):
      - input attendance
      - current pairing
     """
+    params = ScoreParams()
+    hist = get_2012_data()
+
     with open(PARAM_FILE, 'w') as fd:
         fd.write(params.to_csv())
         fd.write("\n")
@@ -262,7 +263,8 @@ def make_files(hist, params):
 
 # -------------------------------------------------------
 
-def run_pairing_code(date, session,
+def run_pairing_code(date=20130413,
+                     session='am_purple',
                      hist=None,
                      params=None,
                      show_details=False):
