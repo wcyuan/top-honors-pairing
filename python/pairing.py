@@ -3,9 +3,9 @@
 Functions to deal with historical data in Top Honors pairing
 
 Run doctests with:
-  python -m doctest historical.py
+  python -m doctest pairing.py
 or
-  python -m doctest -v historical.py
+  python -m doctest -v pairing.py
 
 Terminology:
 
