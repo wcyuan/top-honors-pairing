@@ -87,10 +87,12 @@ HistoricalData is the set of all past Pairings.
 from __future__ import absolute_import, division, with_statement
 
 import collections
+import datetime
 import itertools
 import logging
 import operator
 import optparse
+import os.path
 import re
 
 # Input
@@ -182,17 +184,9 @@ def run_pairing():
     stds = Students().from_csv(STUDENT_FILE)
     tuts = Tutors().from_csv(TUTOR_FILE)
     params = ScoreParams.from_csv(PARAM_FILE)
-    (tutors, students) = Attendance.from_csv(ATTENDANCE_FILE)
+    (tutors, students, date) = Attendance.from_csv(ATTENDANCE_FILE)
+    Attendance.validate(tutors, students, tuts, stds, ATTENDANCE_FILE)
 
-    # Confirm that these are recognized tutors and students
-    for tutor in tutors:
-        if tutor not in tuts.data_by_key:
-            raise ValueError("Invalid Tutor {0} in {1}".
-                             format(tutor, ATTENDANCE_FILE))
-    for student in students:
-        if student not in stds.data_by_key:
-            raise ValueError("Invalid Student {0} in {1}".
-                             format(student, ATTENDANCE_FILE))
     # XXX Confirm that the historical data has only recognized tutors and
     # students
     # XXX Confirm that we have valid topics
@@ -200,10 +194,16 @@ def run_pairing():
     # get score
     (score, annotations) = get_score(pairing, hist, students, params=params)
     # output to a file
-    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations)
+    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
 
 def save_pairing():
-    pass
+    session = os.path.basename(os.path.abspath(os.path.curdir))
+    pairs = PairingFile.from_csv(PAIRING_FILE, session)
+    hist = HistoricalData().from_csv(HIST_FILE)
+    hist.add_list(pairs)
+    with open(HIST_FILE, 'w') as fd:
+        fd.write(hist.to_csv())
+        fd.write("\n")
 
 def score_pairing():
     pass
@@ -351,6 +351,17 @@ class CsvObject(object):
 
     def __ne__(self, other):
         return not (self == other)
+
+    def __repr__(self):
+        """
+        This returns a string which, when evaluated, returns an object
+        that is equivalent to self
+        """
+        return ('{cn}(' + 
+                ',\n{pd} '.join('{0} = {{self.{0}!r}}'.format(f) for f in self.FIELDS) +
+                ')').format(cn=self.__class__.__name__,
+                            pd=' ' * len(self.__class__.__name__),
+                            self=self)
 
     @classmethod
     def to_header(cls, fieldname):
@@ -611,6 +622,13 @@ class HistoricalData(CsvList):
             recent[key] = pair
         return recent
 
+    def validate(self, students, tutors):
+        for pair in self.data:
+            if pair.tutor not in tutors.data_by_key:
+                raise ValueError("Invalid Tutor in {0}".format(pair))
+            if pair.student not in students.data_by_key:
+                raise ValueError("Invalid Student in {0}".format(pair))
+
 # --------------------------------------------------------------------
 
 class Student(CsvObject):
@@ -656,6 +674,9 @@ class Attendance(object):
     def to_csv(cls, filename, students, tutors, hist, date=None):
         recent = hist.most_recent(by_student=True, date=date)
         with open(filename, 'w') as fd:
+            if date is not None:
+                fd.write(','.join(('Date', date)))
+                fd.write("\n")
             fd.write(','.join(('Tutor', '', 'Student', '', 'Topic')))
             fd.write("\n")
             for (student, tutor) in itertools.izip_longest(
@@ -676,10 +697,14 @@ class Attendance(object):
     def from_csv(cls, filename):
         tutors = []
         students = {}
+        date = None
         with open(filename) as fd:
             header = None
             for line in fd:
                 line = line.rstrip()
+                if line.lower().startswith("date"):
+                    date = int(line.split(',', 1)[1])
+                    continue
                 if header is None:
                     header = line
                     continue
@@ -695,12 +720,27 @@ class Attendance(object):
                                      format(student))
                 if not cls.not_present(student_present):
                     students[student] = topic
-        return (tutors, students)
+        return (tutors, students, date)
+
+    @classmethod
+    def validate(cls, tutors, students, tutor_list, student_list, filename):
+        # Confirm that these are recognized tutors and students
+        for tutor in tutors:
+            if tutor not in tutor_list.data_by_key:
+                raise ValueError("Invalid Tutor {0} in {1}".
+                                 format(tutor, filename))
+        for student in students:
+            if student not in student_list.data_by_key:
+                raise ValueError("Invalid Student {0} in {1}".
+                                 format(student, filename))
 
 class PairingFile(object):
     @classmethod
-    def to_csv(cls, filename, pairing, student_topics, annotations):
+    def to_csv(cls, filename, pairing, student_topics, annotations, date=None):
         with open(filename, 'w') as fd:
+            if date is not None:
+                fd.write(','.join(('Date', date)))
+                fd.write("\n")
             fd.write(','.join(('Tutor', 'Student',
                                'Topic', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
                                'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH',
@@ -716,21 +756,38 @@ class PairingFile(object):
                 fd.write("\n")
 
     @classmethod
-    def from_csv(cls, filename, date, session):
+    def from_csv(cls, filename, session):
         pairing = []
+        date = int(datetime.date.today().strftime('%Y%m%d'))
         with open(filename) as fd:
             header = None
             for line in fd:
                 line = line.rstrip()
+                if line.lower().startswith('date'):
+                    date = int(line.split(',', 1)[1])
                 if header is None:
                     header = line
                     continue
                 (tutor, student, topic, tutor_on_own,
                  student_on_own, avoid_tutor, avoid_student,
                  good_match, reason) = line.split(',')
+                tname = tutor.split()
+                tutor_first = tname[0]
+                tutor_last = ' '.join(tname[1:]) if len(tname) > 1 else ''
                 # XXX validate all fields
                 # XXX make the reason optional
                 # XXX allow columns to move?
+                pairing.append(Pair(date=date,
+                                    session=session,
+                                    tutor_first=tutor_first,
+                                    tutor_last=tutor_last,
+                                    student=student,
+                                    tutor_on_own=tutor_on_own,
+                                    on_own=on_own,
+                                    avoid_student=avoid_student,
+                                    avoid_tutor=avoid_tutor,
+                                    good_match=good_match))
+        return pairing
 
 # --------------------------------------------------------------------
 # ParseManualFile
