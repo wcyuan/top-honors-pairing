@@ -432,7 +432,7 @@ class CsvList(object):
     KEY_UNIQUE = False
 
     def __init__(self, data=None):
-        self.data = [] if data is None else data
+        self.data = [] if data is None else list(data)
         self._data_by_key = None
 
     def __eq__(self, other):
