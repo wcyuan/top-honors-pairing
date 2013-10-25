@@ -68,6 +68,7 @@ HistoricalData is the set of all past Pairings.
  [x] Use topic in scoring (untested)
  [ ] create sample data from last year's historical data
  [ ] create scripts to run on the sample data, test each step in the API
+ [ ] validate PairingFile
 
  - next steps:
  [ ] Address issues in parsing the old manual file
@@ -192,7 +193,7 @@ def run_pairing():
     # get score
     (score, annotations) = get_score(pairing, hist, students, params=params)
     # output to a file
-    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
+    PairingFile.to_csv(PAIRING_FILE, pairing, students, annotations, date=date)
 
 def save_pairing():
     session = os.path.basename(os.path.abspath(os.path.curdir))
@@ -204,7 +205,17 @@ def save_pairing():
         fd.write("\n")
 
 def score_pairing():
-    pass
+    hist = HistoricalData().from_csv(HIST_FILE)
+    stds = Students().from_csv(STUDENT_FILE)
+    tuts = Tutors().from_csv(TUTOR_FILE)
+    params = ScoreParams.from_csv(PARAM_FILE)
+    (tutors, students, date) = Attendance.from_csv(ATTENDANCE_FILE)
+    Attendance.validate(tutors, students, tuts, stds, ATTENDANCE_FILE)
+    pairs = PairingFile.from_csv(PAIRING_FILE, session)
+    PairingFile.validate(pairs)
+    pairing = [(pair.student, pair.tutor) for pair in pairs]
+    (score, annotations) = get_score(pairing, hist, students, params=params)
+    PairingFile.to_csv(PAIRING_FILE, pairing, students, annotations, date=date)
 
 
 # -------------------------------------------------------
@@ -234,18 +245,6 @@ def make_files():
         fd.write("\n")
     if (hist != HistoricalData().from_csv(HIST_FILE)):
         raise RuntimeError("Error dumping historical data")
-    with open(ATTENDANCE_FILE, 'w') as fd:
-        students = hist.all_students
-        tutors = hist.all_tutors
-        fd.write(','.join(('Student', '', 'Tutor', '')))
-        fd.write("\n")
-        for (student, tutor) in itertools.izip_longest(students,
-                                                       tutors,
-                                                       fillvalue=''):
-            fd.write(','.join((student, '', tutor, '')))
-            fd.write("\n")
-    with open(PAIRING_FILE, 'w') as fd:
-        fd.write('')
     with open(STUDENT_FILE, 'w') as fd:
         stds = Students(Student(name=n) for n in hist.all_students)
         fd.write(stds.to_csv())
@@ -791,6 +790,10 @@ class PairingFile(object):
                                     avoid_tutor=avoid_tutor,
                                     good_match=good_match))
         return pairing
+
+    @classmethod
+    def validate(cls, pairs):
+        return True
 
 # --------------------------------------------------------------------
 # ParseManualFile
