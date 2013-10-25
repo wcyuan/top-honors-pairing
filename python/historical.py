@@ -102,10 +102,10 @@ ATTENDANCE_FILE = 'Attendance.csv'
 PAIRING_FILE = 'Pairing.csv'
 
 # Auxiliary Data
-STUDENT_FILE = 'data/Students.csv'
-TUTOR_FILE   = 'data/Tutors.csv'
-HIST_FILE    = 'data/HistoricalPairings.csv'
-PARAM_FILE   = 'data/Parameters.csv'
+STUDENT_FILE = os.path.join('data', 'Students.csv')
+TUTOR_FILE   = os.path.join('data', 'Tutors.csv')
+HIST_FILE    = os.path.join('data', 'HistoricalPairings.csv')
+PARAM_FILE   = os.path.join('data', 'Parameters.csv')
 
 # -------------------------------------------------------
 # Main + command line parsing
@@ -884,7 +884,7 @@ class ParseManualFile(object):
         #   "Annabelle w/someone"
         #   lines with no tutor
         #   "see Natasha above"
-        lines = [l.split(',') for l in open(fn).readlines()]
+        lines = [l.replace('"', '').split(',') for l in open(fn).readlines()]
         header = [cls.parse_date(c, start_year=start_year)
                   for c in lines.pop(0)]
         for line in lines:
