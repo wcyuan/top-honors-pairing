@@ -277,8 +277,9 @@ def run_pairing_code(date, session,
     actual = hist.get_pairing(date, session)
     (actual_score, actual_ann) = score_historical(hist, date, session, params)
 
-    student_topics = dict((s, ['']) for s in hist.all_students)
-    best = good_historical_score(hist, date, session, student_topics, params)
+    best = good_historical_score(hist, date, session, params)
+    recent = hist.most_recent(by_student=True, date=date)
+    student_topics = dict((s, recent[s].topic) for s in recent)
     (best_score, best_ann) = get_score(
         best, hist.get_data_before(date, session),
         student_topics)
@@ -683,7 +684,7 @@ class Attendance(object):
                     students.get_matches(is_active=True),
                     tutors.get_matches(is_active=True),
                     fillvalue=''):
-                topic = recent[student] if student in recent else ''
+                topic = recent[student].topic if student in recent else ''
                 fd.write(','.join((tutor.full_name, '',
                                    student.name, '',
                                    topic)))
@@ -1150,7 +1151,8 @@ def get_score(pairing, hist, student_topics, params=None, **kwargs):
 def score_historical(hist, date, session, params=None):
     actual = hist.get_pairing(date, session)
     past_data = hist.get_data_before(date, session)
-    student_topics = dict((s, '') for s in hist.all_students)
+    recent = hist.most_recent(by_student=True, date=date)
+    student_topics = dict((s, recent[s].topic) for s in recent)
     return get_score(actual, past_data, student_topics, params)
 
 # --------------------------------------------------------------------
@@ -1188,11 +1190,13 @@ def good_pairing(hist, students, tutors, student_topics, params=None):
         pairing.append(best_pair)
     return pairing
 
-def good_historical_score(hist, date, session, student_topics, params=None):
+def good_historical_score(hist, date, session, params=None):
     actual = hist.get_pairing(date, session)
     students = set([p[1] for p in actual])
     tutors = set([p[0] for p in actual if p[0].strip() != ''])
     past_data = hist.get_data_before(date, session)
+    recent = hist.most_recent(by_student=True, date=date)
+    student_topics = dict((s, recent[s].topic) for s in recent)
     return good_pairing(past_data, students, tutors, student_topics, params)
 
 # --------------------------------------------------------------------
