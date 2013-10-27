@@ -96,6 +96,7 @@ import operator
 import optparse
 import os.path
 import re
+import sys
 import traceback
 
 # -------------------------------------------------------
@@ -113,6 +114,9 @@ TUTOR_FILE   = os.path.join('data', 'Tutors.csv')
 HIST_FILE    = os.path.join('data', 'HistoricalPairings.csv')
 PARAM_FILE   = os.path.join('data', 'Parameters.csv')
 
+# XXX allow blank topics for historical mode
+ALL_TOPICS   = ('',)
+
 # -------------------------------------------------------
 # Main + command line parsing
 #
@@ -121,10 +125,10 @@ logging.basicConfig(format='[%(asctime)s '
                     '%(funcName)s:%(lineno)s %(levelname)-5s] '
                     '%(message)s')
 
-def main():
-    opts = getopts()
+def main(*args):
+    opts = getopts(args)
     if opts.make_files:
-        make_files()
+        make_files(session=opts.session, date=opts.date)
     elif opts.run_2012:
         given_params = dict((k, getattr(opts, k))
                             for k in ScoreParams.PARAMS
@@ -137,7 +141,7 @@ def main():
                          params=params,
                          show_details=opts.verbose)
 
-def getopts():
+def getopts(args=None):
     parser = optparse.OptionParser()
     parser.add_option('--date',
                       type=int,
@@ -159,7 +163,7 @@ def getopts():
         parser.add_option('--' + param,
                           default=ScoreParams.PARAMS[param])
 
-    (opts, args) = parser.parse_args()
+    (opts, args) = parser.parse_args(list(args) if len(args) > 0 else None)
 
     if len(args) > 0:
         raise ValueError("Did not expect to get any arguments: {0}".
@@ -185,24 +189,28 @@ def make_attendance_sheet(date=None):
 
 def run_pairing():
     hist = HistoricalData().from_csv(HIST_FILE)
-    stds = Students().from_csv(STUDENT_FILE)
-    tuts = Tutors().from_csv(TUTOR_FILE)
-    params = ScoreParams.from_csv(PARAM_FILE)
-    (tutors, students, date) = Attendance.from_csv(ATTENDANCE_FILE)
-    Attendance.validate(tutors, students, tuts, stds, ATTENDANCE_FILE)
-
-    # XXX Confirm that the historical data has only recognized tutors and
+    allstds = Students().from_csv(STUDENT_FILE)
+    alltuts = Tutors().from_csv(TUTOR_FILE)
+    # Confirm that the historical data has only recognized tutors and
     # students
+    hist.validate(allstds, alltuts)
+    params = ScoreParams.from_csv(PARAM_FILE)
+    (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
+    Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
+
     # XXX Confirm that we have valid topics
-    pairing = good_pairing(hist, students.keys(), tutors, students, params)
+    pairing = good_pairing(hist, student_topics.keys(), tutors, student_topics, params)
     # get score
-    (score, annotations) = get_score(pairing, hist, students, params=params)
+    (score, annotations) = get_score(pairing, hist, student_topics, params=params)
     # output to a file
-    PairingFile.to_csv(PAIRING_FILE, pairing, students, annotations, date=date)
+    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
 
 def save_pairing():
     session = os.path.basename(os.path.abspath(os.path.curdir))
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
+    allstds = Students().from_csv(STUDENT_FILE)
+    alltuts = Tutors().from_csv(TUTOR_FILE)
+    PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
     hist = HistoricalData().from_csv(HIST_FILE)
     hist.add_list(pairs)
     with open(HIST_FILE, 'w') as fd:
@@ -211,24 +219,23 @@ def save_pairing():
 
 def score_pairing():
     hist = HistoricalData().from_csv(HIST_FILE)
-    stds = Students().from_csv(STUDENT_FILE)
-    tuts = Tutors().from_csv(TUTOR_FILE)
+    allstds = Students().from_csv(STUDENT_FILE)
+    alltuts = Tutors().from_csv(TUTOR_FILE)
     params = ScoreParams.from_csv(PARAM_FILE)
-    (tutors, students, date) = Attendance.from_csv(ATTENDANCE_FILE)
-    Attendance.validate(tutors, students, tuts, stds, ATTENDANCE_FILE)
+    (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
+    Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     PairingFile.validate(pairs)
     pairing = [(pair.student, pair.tutor) for pair in pairs]
-    (score, annotations) = get_score(pairing, hist, students, params=params)
-    PairingFile.to_csv(PAIRING_FILE, pairing, students, annotations, date=date)
-
+    (score, annotations) = get_score(pairing, hist, student_topics, params=params)
+    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
 
 # -------------------------------------------------------
 # These functions capture the real main code.  Main is just a switch
 # around either run_pairing_code or make_files
 #
 
-def make_files():
+def make_files(date, session):
     """
     Make the initial version of the following files:
      - score parameters
@@ -238,6 +245,7 @@ def make_files():
     """
     params = ScoreParams()
     hist = get_2012_data()
+    hist = hist.get_data_before(date, session)
 
     with open(PARAM_FILE, 'w') as fd:
         fd.write(params.to_csv())
@@ -448,6 +456,14 @@ class Pair(CsvObject):
     def tutor(self):
         return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
+    def validate(self, all_students, all_tutors, all_topics):
+        if self.tutor not in alltutors.data_by_key:
+            raise ValueError("Invalid Tutor {0}".format(tutor))
+        if self.student not in allstudents.data_by_key:
+            raise ValueError("Invalid Student {0}".format(student))
+        if self.topic not in all_topics:
+            raise ValueError("Invalid Topic {0}".format(topic))
+
 class CsvList(object):
     OBJ_CLASS = CsvObject
     ORDER = OBJ_CLASS.FIELDS
@@ -655,10 +671,10 @@ class HistoricalData(CsvList):
 # --------------------------------------------------------------------
 
 class Student(CsvObject):
-    STR_FIELDS  = ('name', 'initial_assessment', 'gender', 'grade')
+    STR_FIELDS  = ('name', 'assessment', 'gender', 'grade')
     BOOL_FIELDS = ('is_active',)
     FIELDS = STR_FIELDS + BOOL_FIELDS
-    DEFAULTS = {'initial_assessment' : '',
+    DEFAULTS = {'assessment' : '',
                 'gender' : '',
                 'grade' : '',
                 'is_active' : True}
@@ -718,7 +734,7 @@ class Attendance(object):
     @classmethod
     def from_csv(cls, filename):
         tutors = []
-        students = {}
+        student_topics = {}
         date = None
         with open(filename) as fd:
             header = None
@@ -737,22 +753,22 @@ class Attendance(object):
                                      format(tutor))
                 if not cls.not_present(tutor_present):
                     tutors.append(tutor)
-                if student in students:
+                if student in student_topics:
                     raise ValueError("Student {0} appears multiple times!".
                                      format(student))
                 if not cls.not_present(student_present):
-                    students[student] = topic
-        return (tutors, students, date)
+                    student_topics[student] = topic
+        return (tutors, student_topics, date)
 
     @classmethod
-    def validate(cls, tutors, students, tutor_list, student_list, filename):
+    def validate(cls, tutors_present, student_topics, alltutors, allstudents, filename):
         # Confirm that these are recognized tutors and students
-        for tutor in tutors:
-            if tutor not in tutor_list.data_by_key:
+        for tutor in tutors_present:
+            if tutor not in alltutors.data_by_key:
                 raise ValueError("Invalid Tutor {0} in {1}".
                                  format(tutor, filename))
-        for student in students:
-            if student not in student_list.data_by_key:
+        for student in student_topics:
+            if student not in allstudents.data_by_key:
                 raise ValueError("Invalid Student {0} in {1}".
                                  format(student, filename))
 
@@ -767,15 +783,15 @@ class PairingFile(object):
                                'Topic', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
                                'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH',
                                'Reason',)))
-        by_tutor = HistoricalData.pairing_by_tutor(pairing)
-        for tutor in sorted(by_tutor):
-            for student in by_tutor[tutor]:
-                ann = (' | '.join(annotations[(tutor, student)])
-                       if (tutor, student) in annotations
-                       else '')
-                fd.write(','.join((tutor, student, student_topics[student],
-                                   '', '', '', '', '', ann)))
-                fd.write("\n")
+            by_tutor = HistoricalData.pairing_by_tutor(pairing)
+            for tutor in sorted(by_tutor):
+                for student in by_tutor[tutor]:
+                    ann = (' | '.join(annotations[(tutor, student)])
+                           if (tutor, student) in annotations
+                           else '')
+                    fd.write(','.join((tutor, student, student_topics[student],
+                                       '', '', '', '', '', ann)))
+                    fd.write("\n")
 
     @classmethod
     def from_csv(cls, filename, session):
@@ -790,14 +806,17 @@ class PairingFile(object):
                 if header is None:
                     header = line
                     continue
+                vals = line.split(',')
+                if len(vals) != 8 and len(vals) != 9:
+                    raise ValueError("Invalid pairing, wrong number of fields: {0}".
+                                     format(line))
                 (tutor, student, topic, tutor_on_own,
                  student_on_own, avoid_tutor, avoid_student,
-                 good_match, reason) = line.split(',')
+                 good_match) = vals[:8]
+                reason = vals[8] if len(vals) > 8 else ''
                 tname = tutor.split()
                 tutor_first = tname[0]
                 tutor_last = ' '.join(tname[1:]) if len(tname) > 1 else ''
-                # XXX validate all fields
-                # XXX make the reason optional
                 # XXX get the columns from the header?
                 pairing.append(Pair(from_csv=True,
                                     date=date,
@@ -805,6 +824,7 @@ class PairingFile(object):
                                     tutor_first=tutor_first,
                                     tutor_last=tutor_last,
                                     student=student,
+                                    topic=topic,
                                     tutor_on_own=tutor_on_own,
                                     on_own=on_own,
                                     avoid_student=avoid_student,
@@ -813,8 +833,9 @@ class PairingFile(object):
         return pairing
 
     @classmethod
-    def validate(cls, pairs):
-        return True
+    def validate(cls, pairs, all_students, all_tutors, all_topics):
+        for pair in pairs:
+            pair.validate(all_students, all_tutors, all_topics)
 
 # --------------------------------------------------------------------
 # ParseManualFile
@@ -1292,7 +1313,7 @@ def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
 
 if __name__ == "__main__":
     try:
-        main()
+        main(*sys.argv[1:])
     except:
         print "Error:"
         print
