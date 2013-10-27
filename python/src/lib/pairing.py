@@ -199,6 +199,7 @@ def run_pairing():
     Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
 
     # XXX Confirm that we have valid topics
+    print "Running ... "
     pairing = good_pairing(hist, student_topics.keys(), tutors, student_topics, params)
     # get score
     (score, annotations) = get_score(pairing, hist, student_topics, params=params)
@@ -457,9 +458,9 @@ class Pair(CsvObject):
         return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
     def validate(self, all_students, all_tutors, all_topics):
-        if self.tutor not in alltutors.data_by_key:
+        if self.tutor not in all_tutors.data_by_key:
             raise ValueError("Invalid Tutor {0}".format(tutor))
-        if self.student not in allstudents.data_by_key:
+        if self.student not in all_students.data_by_key:
             raise ValueError("Invalid Student {0}".format(student))
         if self.topic not in all_topics:
             raise ValueError("Invalid Topic {0}".format(topic))
@@ -783,10 +784,11 @@ class PairingFile(object):
                                'Topic', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
                                'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH',
                                'Reason',)))
+            fd.write("\n")
             by_tutor = HistoricalData.pairing_by_tutor(pairing)
             for tutor in sorted(by_tutor):
                 for student in by_tutor[tutor]:
-                    ann = (' | '.join(annotations[(tutor, student)])
+                    ann = (' | '.join(a[1] for a in annotations[(tutor, student)])
                            if (tutor, student) in annotations
                            else '')
                     fd.write(','.join((tutor, student, student_topics[student],
@@ -826,7 +828,7 @@ class PairingFile(object):
                                     student=student,
                                     topic=topic,
                                     tutor_on_own=tutor_on_own,
-                                    on_own=on_own,
+                                    on_own=student_on_own,
                                     avoid_student=avoid_student,
                                     avoid_tutor=avoid_tutor,
                                     good_match=good_match))
@@ -1230,6 +1232,7 @@ def good_pairing(hist, students, tutors, student_topics, params=None):
                            key = lambda s: len(hist.get_matches(student=s)))
     pairing = []
     for student in by_attendance:
+        print "Running for", student
         best_score = None
         best_pair = None
         for tutor in tutors:
