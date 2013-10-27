@@ -655,8 +655,8 @@ class Students(CsvList):
 class Tutor(CsvObject):
     STR_FIELDS  = ('first', 'last')
     BOOL_FIELDS = ('is_active',)
-    FIELDS = STR_FIELDS
-    DEFAULTS = {'is_active': True}
+    FIELDS = STR_FIELDS + BOOL_FIELDS
+    DEFAULTS = {'is_active' : True}
     @property
     def full_name(self):
         return ' '.join((self.first, self.last))
