@@ -88,6 +88,7 @@ HistoricalData is the set of all past Pairings.
 from __future__ import absolute_import, division, with_statement
 
 import collections
+import contextlib
 import datetime
 import inspect
 import itertools
@@ -189,16 +190,23 @@ def getopts(args=None):
 # These functions capture the API for running pairing
 #
 
+def from_windows(func):
+    def wrapped_func():
+        with run_safely(spin=False, log_level=logging.INFO):
+            log_to_file()
+            func()
+    return wrapped_func
+
+@from_windows
 def make_attendance_sheet(date=None):
-    log_to_file()
     Attendance.to_csv(ATTENDANCE_FILE,
                       Students().from_csv(STUDENT_FILE),
                       Tutors().from_csv(TUTOR_FILE),
                       HistoricalData().from_csv(HIST_FILE),
                       date=date)
 
+@from_windows
 def run_pairing():
-    log_to_file()
     hist = HistoricalData().from_csv(HIST_FILE)
     allstds = Students().from_csv(STUDENT_FILE)
     alltuts = Tutors().from_csv(TUTOR_FILE)
@@ -217,8 +225,8 @@ def run_pairing():
     # output to a file
     PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
 
+@from_windows
 def save_pairing():
-    log_to_file()
     session = os.path.basename(os.path.abspath(os.path.curdir))
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     allstds = Students().from_csv(STUDENT_FILE)
@@ -230,8 +238,8 @@ def save_pairing():
         fd.write(hist.to_csv())
         fd.write("\n")
 
+@from_windows
 def score_pairing():
-    log_to_file()
     hist = HistoricalData().from_csv(HIST_FILE)
     allstds = Students().from_csv(STUDENT_FILE)
     alltuts = Tutors().from_csv(TUTOR_FILE)
@@ -336,13 +344,15 @@ def run_pairing_code(date=20130413,
 
 # -------------------------------------------------------
 
-def run_safely(func):
+@contextlib.contextmanager
+def run_safely(spin=True, log_level=logging.ERROR):
     try:
-        func()
+        yield
     except:
-        logging.error(traceback.format_exc())
-        print
-        spin()
+        logging.log(log_level, traceback.format_exc())
+        if spin:
+            print
+            spin()
         raise
 
 def spin():
@@ -364,7 +374,7 @@ def log_to_file(file=LOG_FILE):
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter(LOG_FORMAT))
     logger.addHandler(fh)
-    logging.info("Running : {0}".format(' '.join(sys.argv)))
+    logging.info("Running : {0}".format(' '.join(sys.argv)))        
 
 # -------------------------------------------------------
 # Pair and HistoricalData
@@ -1360,4 +1370,5 @@ def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
 # --------------------------------------------------------------------
 
 if __name__ == "__main__":
-    run_safely(lambda: main(*sys.argv[1:]))
+    with run_safely():
+        main(*sys.argv[1:])
