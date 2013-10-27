@@ -684,12 +684,11 @@ class Attendance(object):
             fd.write("\n")
             for (student, tutor) in itertools.izip_longest(
                     students.get_matches(is_active=True),
-                    tutors.get_matches(is_active=True),
-                    fillvalue=''):
+                    tutors.get_matches(is_active=True)):
                 topic = recent[student].topic if student in recent else ''
-                fd.write(','.join((tutor.full_name, '',
-                                   student.name, '',
-                                   topic)))
+                tname = '' if tutor is None else tutor.full_name
+                sname = '' if tutor is None else student.name
+                fd.write(','.join((tname, '', sname, '', topic)))
                 fd.write("\n")
 
     @classmethod
