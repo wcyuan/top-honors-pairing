@@ -96,6 +96,10 @@ import operator
 import optparse
 import os.path
 import re
+import traceback
+
+# -------------------------------------------------------
+# Data files
 
 # Input
 ATTENDANCE_FILE = 'Attendance.csv'
@@ -326,18 +330,34 @@ class CsvObject(object):
     DEFAULTS = {}
 
     def __init__(self, *args, **kwargs):
+        from_csv = False
+        if 'from_csv' in kwargs:
+            from_csv = True
+            del kwargs['from_csv']
+        vals = {}
+        if len(args) > len(self.FIELDS):
+            raise ValueError("Too many arguments: {0} (should be {1}".
+                             format(args, self.FIELDS))
         for (fld, val) in zip(self.FIELDS, args):
-            setattr(self, fld, val)
+            vals[fld] = val
         for fld in kwargs:
-            setattr(self, fld, kwargs[fld])
+            if fld not in self.FIELDS:
+                raise ValueError("Invalid argument {0}, must be one of {1}".
+                                 format(fld, self.FIELDS))
+            vals[fld] = kwargs[fld]
         for fld in self.FIELDS:
-            if not hasattr(self, fld):
+            if not fld in vals:
                 if fld in self.DEFAULTS:
-                    setattr(self, fld, self.DEFAULTS[fld])
+                    vals[fld] = self.DEFAULTS[fld]
                 else:
                     raise ValueError("No value provided for field "
                                      "{0} ({1} {2})".
                                      format(fld, args, kwargs))
+
+        for fld in vals:
+            if from_csv:
+                vals[fld] = self.from_csv_field(fld, vals[fld])
+            setattr(self, fld, vals[fld])
 
     def __eq__(self, other):
         if self.FIELDS != other.FIELDS:
@@ -778,8 +798,9 @@ class PairingFile(object):
                 tutor_last = ' '.join(tname[1:]) if len(tname) > 1 else ''
                 # XXX validate all fields
                 # XXX make the reason optional
-                # XXX allow columns to move?
-                pairing.append(Pair(date=date,
+                # XXX get the columns from the header?
+                pairing.append(Pair(from_csv=True,
+                                    date=date,
                                     session=session,
                                     tutor_first=tutor_first,
                                     tutor_last=tutor_last,
@@ -1270,5 +1291,14 @@ def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
 # --------------------------------------------------------------------
 
 if __name__ == "__main__":
-    main()
-
+    try:
+        main()
+    except:
+        print "Error:"
+        print
+        traceback.print_exc()
+        print
+        print "Type Control-C to Exit"
+        while True:
+            pass
+        raise
