@@ -194,7 +194,10 @@ def from_windows(func):
     def wrapped_func():
         with run_safely(spin=False, log_level=logging.INFO):
             log_to_file()
+            cmdline = ' '.join(sys.argv)
+            logging.info("Running : %s", cmdline)
             func()
+            logging.info("Finished running %s", cmdline)
     return wrapped_func
 
 @from_windows
@@ -223,7 +226,8 @@ def run_pairing():
     # get score
     (score, annotations) = get_score(pairing, hist, student_topics, params=params)
     # output to a file
-    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
+    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations,
+                       score=score, date=date)
 
 @from_windows
 def save_pairing():
@@ -246,11 +250,13 @@ def score_pairing():
     params = ScoreParams.from_csv(PARAM_FILE)
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
     Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
+    session = os.path.basename(os.path.abspath(os.path.curdir))
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
-    PairingFile.validate(pairs)
-    pairing = [(pair.student, pair.tutor) for pair in pairs]
+    PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
+    pairing = [(pair.tutor, pair.student) for pair in pairs]
     (score, annotations) = get_score(pairing, hist, student_topics, params=params)
-    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
+    PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations,
+                       score=score, date=date)
 
 # -------------------------------------------------------
 # These functions capture the real main code.  Main is just a switch
@@ -374,7 +380,6 @@ def log_to_file(file=LOG_FILE):
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter(LOG_FORMAT))
     logger.addHandler(fh)
-    logging.info("Running : {0}".format(' '.join(sys.argv)))        
 
 # -------------------------------------------------------
 # Pair and HistoricalData
@@ -830,24 +835,30 @@ class Attendance(object):
 
 class PairingFile(object):
     @classmethod
-    def to_csv(cls, filename, pairing, student_topics, annotations, date=None):
+    def to_csv(cls, filename, pairing, student_topics, annotations, score=None, date=None):
         with open(filename, 'w') as fd:
             if date is not None:
                 fd.write(','.join(('Date', date)))
                 fd.write("\n")
+            if score is not None:
+                fd.write(','.join(('Score', str(score))))
+                fd.write("\n")
             fd.write(','.join(('Tutor', 'Student',
                                'Topic', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
                                'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH',
-                               'Reason',)))
+                               'Score', 'Reason',)))
             fd.write("\n")
             by_tutor = HistoricalData.pairing_by_tutor(pairing)
             for tutor in sorted(by_tutor):
                 for student in by_tutor[tutor]:
+                    score = (sum(a[0] for a in annotations[(tutor, student)])
+                             if (tutor, student) in annotations
+                             else 0)
                     ann = (' | '.join(a[1] for a in annotations[(tutor, student)])
                            if (tutor, student) in annotations
                            else '')
                     fd.write(','.join((tutor, student, student_topics[student],
-                                       '', '', '', '', '', ann)))
+                                       '', '', '', '', '', str(score), ann)))
                     fd.write("\n")
 
     @classmethod
@@ -860,17 +871,20 @@ class PairingFile(object):
                 line = line.rstrip()
                 if line.lower().startswith('date'):
                     date = int(line.split(',', 1)[1])
+                    continue
+                if line.lower().startswith('score'):
+                    score = int(line.split(',', 1)[1])
+                    continue
                 if header is None:
                     header = line
                     continue
                 vals = line.split(',')
-                if len(vals) != 8 and len(vals) != 9:
+                if len(vals) != 8 and len(vals) != 10:
                     raise ValueError("Invalid pairing, wrong number of fields: {0}".
                                      format(line))
                 (tutor, student, topic, tutor_on_own,
                  student_on_own, avoid_tutor, avoid_student,
                  good_match) = vals[:8]
-                reason = vals[8] if len(vals) > 8 else ''
                 tname = tutor.split()
                 tutor_first = tname[0]
                 tutor_last = ' '.join(tname[1:]) if len(tname) > 1 else ''
