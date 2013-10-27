@@ -1,24 +1,29 @@
 #!/usr/bin/env python
 
-if __name__ == "__main__":
+import inspect
+import os
+import sys
+import traceback
+
+def main():
     try:
         # http://stackoverflow.com/questions/714063/python-importing-modules-from-parent-folder
-        import inspect
-        import os
-        import sys
         currentdir = os.path.dirname(
             os.path.abspath(inspect.getfile(inspect.currentframe())))
         parentdir = os.path.dirname(currentdir)
-        sys.path.insert(0, os.path.join(parentdir, 'src'))
+        sys.path.insert(0, os.path.join(parentdir, 'lib'))
         import pairing
 
-        pairing.score_pairing()
+        pairing.make_attendance_sheet()
 
     except Exception as e:
         print "Error:"
         print
-        print e
+        traceback.print_exc()
         print
         print "Type Control-C to Exit"
         while True:
             pass
+
+if __name__ == "__main__":
+    main()

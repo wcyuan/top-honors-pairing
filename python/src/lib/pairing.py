@@ -89,6 +89,7 @@ from __future__ import absolute_import, division, with_statement
 
 import collections
 import datetime
+import inspect
 import itertools
 import logging
 import operator
@@ -937,10 +938,15 @@ class ParseManualFile(object):
         return data
 
 def get_2012_data():
+    currentdir = os.path.dirname(
+        os.path.abspath(inspect.getfile(inspect.currentframe())))
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(currentdir)), 'data', '2012')
     data = []
-    data.extend(ParseManualFile.read_file('am_purple.csv', 'am_purple', 2012))
-    data.extend(ParseManualFile.read_file('am_orange.csv', 'am_orange', 2012))
-    data.extend(ParseManualFile.read_file('pm.csv', 'pm', 2012))
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am_purple.csv'),
+                                          'am_purple', 2012))
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am_orange.csv'),
+                                          'am_orange', 2012))
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'pm.csv'), 'pm', 2012))
     return HistoricalData(data)
 
 # --------------------------------------------------------------------
