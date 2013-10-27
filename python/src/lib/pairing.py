@@ -802,7 +802,7 @@ class Attendance(object):
             for line in fd:
                 line = line.rstrip()
                 if line.lower().startswith("date"):
-                    date = int(line.split(',', 1)[1])
+                    date = int(line.split(',', 2)[1])
                     continue
                 if header is None:
                     header = line
@@ -870,10 +870,10 @@ class PairingFile(object):
             for line in fd:
                 line = line.rstrip()
                 if line.lower().startswith('date'):
-                    date = int(line.split(',', 1)[1])
+                    date = int(line.split(',', 2)[1])
                     continue
                 if line.lower().startswith('score'):
-                    score = int(line.split(',', 1)[1])
+                    score = int(line.split(',', 2)[1])
                     continue
                 if header is None:
                     header = line
@@ -1300,8 +1300,9 @@ def good_pairing(hist, students, tutors, student_topics, params=None):
                            reverse=True,
                            key = lambda s: len(hist.get_matches(student=s)))
     pairing = []
-    for student in by_attendance:
-        print "Running for", student
+    n_students = len(students)
+    for (n, student) in enumerate(by_attendance):
+        print "Running {0}/{1}:".format(n, n_students), student
         best_score = None
         best_pair = None
         for tutor in tutors:
