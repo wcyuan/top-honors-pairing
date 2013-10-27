@@ -723,7 +723,7 @@ class Attendance(object):
                     tutors.get_matches(is_active=True)):
                 topic = recent[student].topic if student in recent else ''
                 tname = '' if tutor is None else tutor.full_name
-                sname = '' if tutor is None else student.name
+                sname = '' if student is None else student.name
                 fd.write(','.join((tname, '', sname, '', topic)))
                 fd.write("\n")
 
