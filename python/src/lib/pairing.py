@@ -113,17 +113,20 @@ STUDENT_FILE = os.path.join('data', 'Students.csv')
 TUTOR_FILE   = os.path.join('data', 'Tutors.csv')
 HIST_FILE    = os.path.join('data', 'HistoricalPairings.csv')
 PARAM_FILE   = os.path.join('data', 'Parameters.csv')
+LOG_FILE     = os.path.join('data', 'log.txt')
 
 # XXX allow blank topics for historical mode
 ALL_TOPICS   = ('',)
+
+LOG_FORMAT   = ('[%(asctime)s '
+                '%(funcName)s:%(lineno)s %(levelname)-5s] '
+                '%(message)s')
 
 # -------------------------------------------------------
 # Main + command line parsing
 #
 
-logging.basicConfig(format='[%(asctime)s '
-                    '%(funcName)s:%(lineno)s %(levelname)-5s] '
-                    '%(message)s')
+logging.basicConfig(format=LOG_FORMAT)
 
 def main(*args):
     opts = getopts(args)
@@ -140,6 +143,8 @@ def main(*args):
                          hist=hist,
                          params=params,
                          show_details=opts.verbose)
+    if opts.spin:
+        spin()
 
 def getopts(args=None):
     parser = optparse.OptionParser()
@@ -159,6 +164,10 @@ def getopts(args=None):
     parser.add_option('--run_2012',
                       action='store_true',
                       help='run for 2012, expecting data to be in the cwd')
+    parser.add_option('--spin',
+                      action='store_true',
+                      help="if true, instead of existing, go into an infinite loop to"
+                      "users a chance to read the output")
     for param in ScoreParams.PARAMS:
         parser.add_option('--' + param,
                           default=ScoreParams.PARAMS[param])
@@ -181,6 +190,7 @@ def getopts(args=None):
 #
 
 def make_attendance_sheet(date=None):
+    log_to_file()
     Attendance.to_csv(ATTENDANCE_FILE,
                       Students().from_csv(STUDENT_FILE),
                       Tutors().from_csv(TUTOR_FILE),
@@ -188,6 +198,7 @@ def make_attendance_sheet(date=None):
                       date=date)
 
 def run_pairing():
+    log_to_file()
     hist = HistoricalData().from_csv(HIST_FILE)
     allstds = Students().from_csv(STUDENT_FILE)
     alltuts = Tutors().from_csv(TUTOR_FILE)
@@ -207,6 +218,7 @@ def run_pairing():
     PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations, date=date)
 
 def save_pairing():
+    log_to_file()
     session = os.path.basename(os.path.abspath(os.path.curdir))
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     allstds = Students().from_csv(STUDENT_FILE)
@@ -219,6 +231,7 @@ def save_pairing():
         fd.write("\n")
 
 def score_pairing():
+    log_to_file()
     hist = HistoricalData().from_csv(HIST_FILE)
     allstds = Students().from_csv(STUDENT_FILE)
     alltuts = Tutors().from_csv(TUTOR_FILE)
@@ -320,6 +333,38 @@ def run_pairing_code(date=20130413,
     print "Here are the differences:"
     print
     diff_pairings(actual, best, actual_ann, best_ann)
+
+# -------------------------------------------------------
+
+def run_safely(func):
+    try:
+        func()
+    except:
+        logging.error(traceback.format_exc())
+        print
+        spin()
+        raise
+
+def spin():
+    print "Type Control-C to Exit"
+    while True:
+        pass
+
+def log_to_file(file=LOG_FILE):
+    # Set the logger's level to DEBUG, but change any existing
+    # handler's levels to the logger's old level
+    logger = logging.getLogger()
+    curlvl = logger.level
+    for handler in logger.handlers:
+        handler.setLevel(curlvl)
+    logger.setLevel(logging.DEBUG)
+
+    # Add a new file handler
+    fh = logging.FileHandler(LOG_FILE)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter(LOG_FORMAT))
+    logger.addHandler(fh)
+    logging.info("Running : {0}".format(' '.join(sys.argv)))
 
 # -------------------------------------------------------
 # Pair and HistoricalData
@@ -1315,14 +1360,4 @@ def diff_pairings(pairing1, pairing2, ann1=None, ann2=None):
 # --------------------------------------------------------------------
 
 if __name__ == "__main__":
-    try:
-        main(*sys.argv[1:])
-    except:
-        print "Error:"
-        print
-        traceback.print_exc()
-        print
-        print "Type Control-C to Exit"
-        while True:
-            pass
-        raise
+    run_safely(lambda: main(*sys.argv[1:]))
