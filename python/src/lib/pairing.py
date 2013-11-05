@@ -133,12 +133,15 @@ def main(*args):
     opts = getopts(args)
     if opts.make_files:
         make_files(session=opts.session, date=opts.date)
-    elif opts.run_2012:
+    elif opts.run_2012 or opts.run_2013:
         given_params = dict((k, getattr(opts, k))
                             for k in ScoreParams.PARAMS
                             if hasattr(opts, k))
         params = ScoreParams(**given_params)
-        hist = get_2012_data()
+        if opts.run_2012:
+            hist = get_2012_data()
+        else:
+            hist = get_2013_data()
         run_pairing_code(opts.date,
                          opts.session,
                          hist=hist,
@@ -164,7 +167,10 @@ def getopts(args=None):
                       help='make initial csv files')
     parser.add_option('--run_2012',
                       action='store_true',
-                      help='run for 2012, expecting data to be in the cwd')
+                      help='run for 2012, expecting data to be in the data directory')
+    parser.add_option('--run_2013',
+                      action='store_true',
+                      help='run for 2013, expecting data to be in the data directory')
     parser.add_option('--spin',
                       action='store_true',
                       help="if true, instead of existing, go into an infinite loop to"
@@ -1059,6 +1065,17 @@ def get_2012_data():
     data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am_orange.csv'),
                                           'am_orange', 2012))
     data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'pm.csv'), 'pm', 2012))
+    return HistoricalData(data)
+
+def get_2013_data():
+    currentdir = os.path.dirname(
+        os.path.abspath(inspect.getfile(inspect.currentframe())))
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(currentdir)), 'data', '2013')
+    data = []
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am.csv'),
+                                          'am', 2013))
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'pm.csv'),
+                                          'pm', 2013))
     return HistoricalData(data)
 
 # --------------------------------------------------------------------
