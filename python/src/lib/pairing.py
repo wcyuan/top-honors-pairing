@@ -993,6 +993,8 @@ class ParseManualFile(object):
         (student, on_own) = cls.parse_mark('OO', student)
         (student, avoid_tutor) = cls.parse_mark('X', student)
         (student, good_match) = cls.parse_mark(':-)', student)
+        (student, good_match2) = cls.parse_mark('=)', student)
+        good_match = good_match or good_match2
         return (student, on_own, avoid_tutor, good_match)
 
     @classmethod
