@@ -117,7 +117,21 @@ PARAM_FILE   = os.path.join('data', 'Parameters.csv')
 LOG_FILE     = os.path.join('data', 'log.txt')
 
 # XXX allow blank topics for historical mode
-ALL_TOPICS   = ('',)
+ALL_TOPICS   = ('NUMBERS',
+                'WORD PROBLEMS',
+                'PLACE VALUE',
+                'ESTIMATION',
+                'ARITHMETIC',
+                'MATH LITERACY',
+                'FRACTIONS',
+                'MONEY',
+                'TIME',
+                'AVERAGE',
+                'ADVANCED WORD PROBLEMS',
+                'MEASUREMENT',
+                'CONVERSION',
+                'ALGEBRA',
+                '')
 
 LOG_FORMAT   = ('[%(asctime)s '
                 '%(funcName)s:%(lineno)s %(levelname)-5s] '
@@ -154,9 +168,9 @@ def getopts(args=None):
     parser = optparse.OptionParser()
     parser.add_option('--date',
                       type=int,
-                      default=20130413)
+                      default=20131109)
     parser.add_option('--session',
-                      default='am_purple')
+                      default='am')
     parser.add_option('--verbose',
                       action='store_true',
                       help='show score annotations')
@@ -278,7 +292,7 @@ def make_files(date, session):
      - current pairing
     """
     params = ScoreParams()
-    hist = get_2012_data()
+    hist = get_2013_data()
     hist = hist.get_data_before(date, session)
 
     with open(PARAM_FILE, 'w') as fd:
@@ -528,8 +542,9 @@ class Pair(CsvObject):
             raise ValueError("Invalid Tutor {0}".format(tutor))
         if self.student not in all_students.data_by_key:
             raise ValueError("Invalid Student {0}".format(student))
-        if self.topic not in all_topics:
-            raise ValueError("Invalid Topic {0}".format(topic))
+        if self.topic.upper() not in all_topics:
+            raise ValueError("Invalid Topic {0}, should be one of {1}".
+                             format(topic, all_topics))
 
 class CsvList(object):
     OBJ_CLASS = CsvObject
@@ -1186,7 +1201,7 @@ def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
         (-points_multiple_students,
           "-{0} because {1} is working with {2} students".
           format(points_multiple_students, tutor, n_students)))
-    if any([t != topics[0] for t in topics[1:]]):
+    if any([t.upper() != topics[0].upper() for t in topics[1:]]):
         score -= params.penalty_different_topics
         logging.debug("Score %s: Decreasing score by %s because students "
                       "%s with tutor %s are working on different topics %s",
