@@ -796,11 +796,17 @@ class HistoricalData(CsvList):
         return recent
 
     def validate(self, students, tutors):
+        invalid = False
         for pair in self.data:
             if pair.tutor not in tutors.data_by_key:
-                raise ValueError("Invalid Tutor in {0}".format(pair))
+                print "Invalid Tutor in {0}".format(pair)
+                invalid = True
+        for pair in self.data:
             if pair.student not in students.data_by_key:
-                raise ValueError("Invalid Student in {0}".format(pair))
+                print "Invalid Student in {0}".format(pair)
+                invalid = True
+        if invalid:
+            raise ValueError("Errors in historical data, aborting.")
 
 # --------------------------------------------------------------------
 
@@ -855,9 +861,9 @@ class Attendance(object):
             for (student, tutor) in itertools.izip_longest(
                     students.get_matches(is_active=True),
                     tutors.get_matches(is_active=True)):
-                topic = recent[student].topic if student in recent else ''
                 tname = '' if tutor is None else tutor.full_name
                 sname = '' if student is None else student.name
+                topic = recent[sname].topic if sname in recent else ''
                 fd.write(','.join((tname, '', sname, '', topic)))
                 fd.write("\n")
 
@@ -896,15 +902,23 @@ class Attendance(object):
 
     @classmethod
     def validate(cls, tutors_present, student_topics, alltutors, allstudents, filename):
+        valid = True
         # Confirm that these are recognized tutors and students
         for tutor in tutors_present:
             if tutor not in alltutors.data_by_key:
-                raise ValueError("Invalid Tutor {0} in {1}".
-                                 format(tutor, filename))
+                print "Invalid Tutor {0} in {1}".format(tutor, filename)
+                valid = False
         for student in student_topics:
             if student not in allstudents.data_by_key:
-                raise ValueError("Invalid Student {0} in {1}".
-                                 format(student, filename))
+                print "Invalid Student {0} in {1}".format(student, filename)
+                valid = False
+            topic = normalize_topic(student_topics[student], check=False)
+            if topic is None:
+                print("Invalid topic {0} for student {1} in {2}".
+                      format(student_topics[student], student, filename))
+                valid = False
+        if not valid:
+            raise ValueError("Errors in Attendance Sheet, aborting...")
 
 class PairingFile(object):
     @classmethod
@@ -1202,11 +1216,14 @@ class ScoreParams(object):
     def __ne__(self, other):
         return not (self == other)
 
-def normalize_topic(topic):
+def normalize_topic(topic, check=True):
     for topic_list in ALL_TOPICS:
         if topic.upper() in topic_list:
             return topic_list[0]
-    raise ValueError("Unknown topic: {0}".format(topic))
+    if check:
+        raise ValueError("Unknown topic: {0}".format(topic))
+    else:
+        return None
 
 def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
     if params is None:
@@ -1268,11 +1285,11 @@ def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
                       score, params.penalty_different_topics, students, tutor,
                       topics)
         annotations[(tutor, student1)].append(
-            -params.penalty_different_topics,
-            "-{0} because students {1} working with tutor {2} are working "
-            "on different topics {3}".format(
-                params.penalty_different_topics,
-                students, tutor, topics))
+            (-params.penalty_different_topics,
+             "-{0} because students {1} working with tutor {2} are working "
+             "on different topics {3}".format(
+                 params.penalty_different_topics,
+                 students, tutor, topics)))
     if any([p.tutor_on_own for p in hist.get_matches(tutor=tutor)]):
         score -= params.penalty_tutor_on_own
         logging.debug("Score %s: Decreasing score by %s because tutor %s "
