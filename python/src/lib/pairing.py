@@ -222,11 +222,21 @@ def from_windows(func):
 
 @from_windows
 def make_attendance_sheet(date=None):
+    # Validate other data
+    hist = HistoricalData().from_csv(HIST_FILE)
+    allstds = Students().from_csv(STUDENT_FILE)
+    alltuts = Tutors().from_csv(TUTOR_FILE)
+    hist.validate(allstds, alltuts)
+
     Attendance.to_csv(ATTENDANCE_FILE,
                       Students().from_csv(STUDENT_FILE),
                       Tutors().from_csv(TUTOR_FILE),
                       HistoricalData().from_csv(HIST_FILE),
                       date=date)
+
+    # Validate what we just wrote
+    (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
+    Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
 
 @from_windows
 def run_pairing():
@@ -240,7 +250,6 @@ def run_pairing():
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
     Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
 
-    # XXX Confirm that we have valid topics
     print "Running ... "
     pairing = good_pairing(hist, student_topics.keys(), tutors, student_topics, params)
     # get score
@@ -248,6 +257,11 @@ def run_pairing():
     # output to a file
     PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations,
                        score=score, date=date)
+
+    # validate what we just wrote
+    session = os.path.basename(os.path.abspath(os.path.curdir))
+    pairs = PairingFile.from_csv(PAIRING_FILE, session)
+    PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
 
 @from_windows
 def save_pairing():
@@ -313,9 +327,7 @@ def make_files(date, session):
     if stds != Students().from_csv(STUDENT_FILE):
         raise RuntimeError("Error dumping student data")
     with open(TUTOR_FILE, 'w') as fd:
-        tuts = Tutors(Tutor(first=t[0], last=t[1])
-                      for t in set((p.tutor_first, p.tutor_last)
-                                   for p in hist.data))
+        tuts = Tutors(Tutor(t) for t in set(p.tutor for p in hist.data))
         fd.write(tuts.to_csv())
         fd.write("\n")
     if tuts != Tutors().from_csv(TUTOR_FILE):
@@ -576,20 +588,13 @@ class Pair(CsvObject):
     represented as N Pairs)
     """
     INT_FIELDS  = ('date',)
-    STR_FIELDS  = ('session', 'tutor_first', 'tutor_last',
-                   'student', 'topic')
+    STR_FIELDS  = ('session', 'tutor', 'student', 'topic')
     # Instead of avoid_student being a boolean, should it be a list of
     # the names students to avoid?
     BOOL_FIELDS = ('tutor_on_own', 'on_own', 'avoid_student',
                    'avoid_tutor', 'good_match')
     FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
     DEFAULTS = {'topic' : ''}
-
-    @property
-    def tutor(self):
-        if self.tutor_last == '':
-            return self.tutor_first
-        return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
     def validate(self, all_students, all_tutors, all_topics, throw=False):
         valid = True
@@ -843,15 +848,10 @@ class Students(CsvList):
         return s.name
 
 class Tutor(CsvObject):
-    STR_FIELDS  = ('first', 'last')
+    STR_FIELDS  = ('full_name',)
     BOOL_FIELDS = ('is_active',)
     FIELDS = STR_FIELDS + BOOL_FIELDS
     DEFAULTS = {'is_active' : True}
-    @property
-    def full_name(self):
-        if self.last == '':
-            return self.first
-        return ' '.join((self.first, self.last))
 
 class Tutors(CsvList):
     OBJ_CLASS = Tutor
@@ -999,15 +999,11 @@ class PairingFile(object):
                 (tutor, student, topic, tutor_on_own,
                  student_on_own, avoid_tutor, avoid_student,
                  good_match) = vals[:8]
-                tname = tutor.split()
-                tutor_first = tname[0]
-                tutor_last = ' '.join(tname[1:]) if len(tname) > 1 else ''
                 # XXX get the columns from the header?
                 pairing.append(Pair(from_csv=True,
                                     date=date,
                                     session=session,
-                                    tutor_first=tutor_first,
-                                    tutor_last=tutor_last,
+                                    tutor=tutor,
                                     student=student,
                                     topic=topic,
                                     tutor_on_own=tutor_on_own,
@@ -1021,7 +1017,7 @@ class PairingFile(object):
     def validate(cls, pairs, all_students, all_tutors, all_topics):
         valid = True
         for pair in pairs:
-            if pair.validate(all_students, all_tutors, all_topics, throw=False):
+            if not pair.validate(all_students, all_tutors, all_topics, throw=False):
                 valid = False
         if not valid:
             raise ValueError("Errors in pairing file, aborting...")
@@ -1140,6 +1136,10 @@ class ParseManualFile(object):
                     tutor_last = val
                     (tutor_last, tutor_last_on_own) = cls.parse_mark(
                         'OO', tutor_last)
+                    if tutor_last == '':
+                        tutor_name = tutor_first
+                    else:
+                        tutor_name = ' '.join((tutor_first, tutor_last))
                     tutor_on_own = tutor_on_own or tutor_last_on_own
                 elif type(fld) == int:
                     if val == '':
@@ -1158,8 +1158,7 @@ class ParseManualFile(object):
                                                 tutor_first, tutor_last, date))
                         data.append(Pair(date=date,
                                          session=session,
-                                         tutor_first=tutor_first,
-                                         tutor_last=tutor_last,
+                                         tutor=tutor_name,
                                          student=student,
                                          tutor_on_own=tutor_on_own,
                                          on_own=on_own,
