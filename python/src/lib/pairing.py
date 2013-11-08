@@ -116,22 +116,22 @@ HIST_FILE    = os.path.join('data', 'HistoricalPairings.csv')
 PARAM_FILE   = os.path.join('data', 'Parameters.csv')
 LOG_FILE     = os.path.join('data', 'log.txt')
 
-# XXX allow blank topics for historical mode
-ALL_TOPICS   = ('NUMBERS',
-                'WORD PROBLEMS',
-                'PLACE VALUE',
-                'ESTIMATION',
-                'ARITHMETIC',
-                'MATH LITERACY',
-                'FRACTIONS',
-                'MONEY',
-                'TIME',
-                'AVERAGE',
-                'ADVANCED WORD PROBLEMS',
-                'MEASUREMENT',
-                'CONVERSION',
-                'ALGEBRA',
-                '')
+ALL_TOPICS   = (('NUMBERS', '#'),
+                ('WORD PROBLEMS', 'WP'),
+                ('PLACE VALUE', 'PV'),
+                ('ESTIMATION', 'EST'),
+                ('ARITHMETIC', 'ART'),
+                ('MATH LITERACY',),
+                ('FRACTIONS',),
+                ('MONEY',),
+                ('TIME',),
+                ('AVERAGE',),
+                ('ADVANCED WORD PROBLEMS',),
+                ('MEASUREMENT',),
+                ('CONVERSION',),
+                ('ALGEBRA',),
+                # XXX allow blank topics for historical mode
+                ('',))
 
 LOG_FORMAT   = ('[%(asctime)s '
                 '%(funcName)s:%(lineno)s %(levelname)-5s] '
@@ -594,7 +594,7 @@ class Pair(CsvObject):
             raise ValueError("Invalid Tutor {0}".format(tutor))
         if self.student not in all_students.data_by_key:
             raise ValueError("Invalid Student {0}".format(student))
-        if self.topic.upper() not in all_topics:
+        if self.topic.upper() not in itertools.chain(all_topics):
             raise ValueError("Invalid Topic {0}, should be one of {1}".
                              format(topic, all_topics))
 
@@ -1202,6 +1202,12 @@ class ScoreParams(object):
     def __ne__(self, other):
         return not (self == other)
 
+def normalize_topic(topic):
+    for topic_list in ALL_TOPICS:
+        if topic.upper() in topic_list:
+            return topic_list[0]
+    raise ValueError("Unknown topic: {0}".format(topic))
+
 def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
     if params is None:
         params = ScoreParams(**kwargs)
@@ -1255,7 +1261,7 @@ def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
         (-points_multiple_students,
           "-{0} because {1} is working with {2} students".
           format(points_multiple_students, tutor, n_students)))
-    if any([t.upper() != topics[0].upper() for t in topics[1:]]):
+    if any([t != topics[0] for t in topics[1:]]):
         score -= params.penalty_different_topics
         logging.debug("Score %s: Decreasing score by %s because students "
                       "%s with tutor %s are working on different topics %s",
@@ -1350,7 +1356,7 @@ def get_score(pairing, hist, student_topics, params=None, **kwargs):
     annotations = {}
     for tutor in by_tutor:
         group = by_tutor[tutor]
-        topics = [student_topics[s] for s in group]
+        topics = [normalize_topic(student_topics[s]) for s in group]
         group_score, group_ann = get_group_score(hist, tutor, group, topics,
                                                  params=params)
         score += group_score
