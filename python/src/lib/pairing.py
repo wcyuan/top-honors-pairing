@@ -590,13 +590,20 @@ class Pair(CsvObject):
         return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
     def validate(self, all_students, all_tutors, all_topics):
+        valid = True
         if self.tutor not in all_tutors.data_by_key:
-            raise ValueError("Invalid Tutor {0}".format(tutor))
+            print "Invalid Tutor {0}".format(self.tutor)
+            valid = False
         if self.student not in all_students.data_by_key:
-            raise ValueError("Invalid Student {0}".format(student))
-        if self.topic.upper() not in itertools.chain(all_topics):
-            raise ValueError("Invalid Topic {0}, should be one of {1}".
-                             format(topic, all_topics))
+            print "Invalid Student {0}".format(self.student)
+            valid = False
+        norm_topic = normalize_topic(self.topic, check=False)
+        if norm_topic is None:
+            print("Invalid Topic {0}, should be one of {1}".
+                  format(self.topic, [itertools.chain(all_topics)]))
+            valid = False
+        if not valid:
+            raise ValueError("Errors in pairing file, aborting...")
 
 class CsvList(object):
     OBJ_CLASS = CsvObject
