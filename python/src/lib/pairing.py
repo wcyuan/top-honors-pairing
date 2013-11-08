@@ -422,7 +422,7 @@ class SpellChecker(object):
     def __init__(self, wordlist, alphabet=None):
         self.nwords = self.train(wordlist)
         if alphabet is None:
-            alphabet = 'abcdefghijklmnopqrstuvwxyz_'
+            alphabet = 'abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ |.'
         self.alphabet = alphabet
 
     def edits1(self, word):
@@ -587,23 +587,28 @@ class Pair(CsvObject):
 
     @property
     def tutor(self):
+        if self.tutor_last == '':
+            return self.tutor_first
         return '{0} {1}'.format(self.tutor_first, self.tutor_last)
 
-    def validate(self, all_students, all_tutors, all_topics):
+    def validate(self, all_students, all_tutors, all_topics, throw=False):
         valid = True
         if self.tutor not in all_tutors.data_by_key:
             print "Invalid Tutor {0}".format(self.tutor)
+            suggest(self.tutor, all_tutors.data_by_key)
             valid = False
         if self.student not in all_students.data_by_key:
             print "Invalid Student {0}".format(self.student)
+            suggest(self.student, all_students.data_by_key)
             valid = False
         norm_topic = normalize_topic(self.topic, check=False)
         if norm_topic is None:
-            print("Invalid Topic {0}, should be one of {1}".
-                  format(self.topic, [itertools.chain(all_topics)]))
+            print("Invalid Topic {0}.".format(self.topic))
+            suggest(topic, itertools.chain(all_topics))
             valid = False
-        if not valid:
-            raise ValueError("Errors in pairing file, aborting...")
+        if throw and not valid:
+            raise ValueError("Errors in pair {0}".format(self))
+        return valid
 
 class CsvList(object):
     OBJ_CLASS = CsvObject
@@ -803,16 +808,18 @@ class HistoricalData(CsvList):
         return recent
 
     def validate(self, students, tutors):
-        invalid = False
+        valid = True
         for pair in self.data:
             if pair.tutor not in tutors.data_by_key:
                 print "Invalid Tutor in {0}".format(pair)
-                invalid = True
+                suggest(pair.tutor, tutors.data_by_key)
+                valid = False
         for pair in self.data:
             if pair.student not in students.data_by_key:
                 print "Invalid Student in {0}".format(pair)
-                invalid = True
-        if invalid:
+                suggest(pair.student, students.data_by_key)
+                valid = False
+        if not valid:
             raise ValueError("Errors in historical data, aborting.")
 
 # --------------------------------------------------------------------
@@ -842,6 +849,8 @@ class Tutor(CsvObject):
     DEFAULTS = {'is_active' : True}
     @property
     def full_name(self):
+        if self.last == '':
+            return self.first
         return ' '.join((self.first, self.last))
 
 class Tutors(CsvList):
@@ -852,6 +861,14 @@ class Tutors(CsvList):
     @classmethod
     def key_func(cls, t):
         return t.full_name
+
+# --------------------------------------------------------------------
+
+def suggest(elt, poss):
+    sc = SpellChecker(poss)
+    corr = sc.correct(elt)
+    if corr != elt:
+        print "Did you mean {0}?".format(corr)
 
 # --------------------------------------------------------------------
 
@@ -913,16 +930,19 @@ class Attendance(object):
         # Confirm that these are recognized tutors and students
         for tutor in tutors_present:
             if tutor not in alltutors.data_by_key:
-                print "Invalid Tutor {0} in {1}".format(tutor, filename)
+                print "Invalid Tutor {0} in {1}.".format(tutor, filename)
+                suggest(tutor, alltutors.data_by_key)
                 valid = False
         for student in student_topics:
             if student not in allstudents.data_by_key:
                 print "Invalid Student {0} in {1}".format(student, filename)
+                suggest(student, allstudents.data_by_key)
                 valid = False
             topic = normalize_topic(student_topics[student], check=False)
             if topic is None:
                 print("Invalid topic {0} for student {1} in {2}".
                       format(student_topics[student], student, filename))
+                suggest(topic, itertools.chain(all_topics))
                 valid = False
         if not valid:
             raise ValueError("Errors in Attendance Sheet, aborting...")
@@ -999,8 +1019,12 @@ class PairingFile(object):
 
     @classmethod
     def validate(cls, pairs, all_students, all_tutors, all_topics):
+        valid = True
         for pair in pairs:
-            pair.validate(all_students, all_tutors, all_topics)
+            if pair.validate(all_students, all_tutors, all_topics, throw=False):
+                valid = False
+        if not valid:
+            raise ValueError("Errors in pairing file, aborting...")
 
 # --------------------------------------------------------------------
 # ParseManualFile
