@@ -33,17 +33,21 @@ HistoricalData is the set of all past Pairings.
    - Given a past date, populate the 'input attendance' and 'current
      pairing' with the data from that date (with the score and explanation)
    - Rename a student or tutor
+   - Re-save a pairing (if there is already a historical
+     pairing with today's date, remove it)
 
  - Data layout: many separate files
-   - score parameters
-   - historical data
-   - input attendance
-   - current pairing
-   - list of students -- including initial assessment, gender, etc.
-   - list of tutors -- including gender, etc.
-   - a run log
+   - mostly static, or modified only by the program
+     - score parameters
+     - historical data
+     - list of students -- including initial assessment, gender, etc.
+     - list of tutors -- including gender, etc.
+     - a run log
+   - things that need to be modified by hand each week
+     - input attendance
+     - current pairing
  - code:
-   - a bitbucket git repo inside of a dropbox shared folder (?)
+   - a bitbucket git repo inside of a dropbox shared folder
      - stores everything (including data)?  or just the code?
        or just the code and the historical data?
        is the data sensitive?
@@ -54,24 +58,10 @@ HistoricalData is the set of all past Pairings.
    - the py scripts get session from cwd
    - date comes from the actual date, or from a line in the Attendance sheet?
 
- - plan:
- [x] figure out the new data layout
- [x] put things on dropbox/git
- [x] create classes for reading/writing data files
-   [x] score parameters
-   [x] historical data
-   [x] student and tutor lists
-     [x] confirm that all students and tutors in the historical data are valid
-   [x] attendance (including topic)
-   [x] Add 'topic' to attendance and historical data
-   [x] create layout for pairings
- [x] Use topic in scoring (untested)
- [ ] create sample data from last year's historical data
- [ ] create scripts to run on the sample data, test each step in the API
- [ ] validate PairingFile
-
  - next steps:
- [ ] Address issues in parsing the old manual file
+ [ ] add tests
+     - dump and restore files
+     - score scenarios
  [ ] clean up code organization (break into several files,
      separate main from functions)
  [ ] add comments, docstrings
@@ -116,20 +106,20 @@ HIST_FILE    = os.path.join('data', 'HistoricalPairings.csv')
 PARAM_FILE   = os.path.join('data', 'Parameters.csv')
 LOG_FILE     = os.path.join('data', 'log.txt')
 
-ALL_TOPICS   = (('NUMBERS', '#'),
+ALL_TOPICS   = (('NUMBERS', '#', '#S'),
                 ('WORD PROBLEMS', 'WP'),
                 ('PLACE VALUE', 'PV'),
                 ('ESTIMATION', 'EST'),
-                ('ARITHMETIC', 'ART'),
-                ('MATH LITERACY',),
-                ('FRACTIONS',),
-                ('MONEY',),
+                ('ARITHMETIC', 'ART', 'ARITH'),
+                ('MATH LITERACY', 'ML'),
+                ('FRACTIONS', 'FRAC', 'FRACT'),
+                ('MONEY', '$'),
                 ('TIME',),
-                ('AVERAGE',),
-                ('ADVANCED WORD PROBLEMS',),
-                ('MEASUREMENT',),
-                ('CONVERSION',),
-                ('ALGEBRA',),
+                ('AVERAGE', 'AVE'),
+                ('ADVANCED WORD PROBLEMS', 'AWP', 'ADV WP'),
+                ('MEASUREMENT', 'MEA', 'MEAS'),
+                ('CONVERSION', 'CONV'),
+                ('ALGEBRA', 'ALG', 'ALGB'),
                 # XXX allow blank topics for historical mode
                 ('',))
 
@@ -181,14 +171,17 @@ def getopts(args=None):
                       help='make initial csv files')
     parser.add_option('--run_2012',
                       action='store_true',
-                      help='run for 2012, expecting data to be in the data directory')
+                      help='run for 2012, expecting data to be in the '
+                      'data directory')
     parser.add_option('--run_2013',
                       action='store_true',
-                      help='run for 2013, expecting data to be in the data directory')
+                      help='run for 2013, expecting data to be in the '
+                      'data directory')
     parser.add_option('--spin',
                       action='store_true',
-                      help="if true, instead of existing, go into an infinite loop to"
-                      "users a chance to read the output")
+                      help="if true, instead of existing, go into an "
+                      "infinite loop to give users a chance to read "
+                      "the output")
     for param in ScoreParams.PARAMS:
         parser.add_option('--' + param,
                           default=ScoreParams.PARAMS[param])
@@ -236,7 +229,8 @@ def make_attendance_sheet(date=None):
 
     # Validate what we just wrote
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
-    Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
+    Attendance.validate(tutors, student_topics, alltuts, allstds,
+                        ATTENDANCE_FILE)
 
 @from_windows
 def run_pairing():
@@ -248,12 +242,16 @@ def run_pairing():
     hist.validate(allstds, alltuts)
     params = ScoreParams.from_csv(PARAM_FILE)
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
-    Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
+    # XXX should we use the date to restrict the historical data?
+    Attendance.validate(tutors, student_topics, alltuts, allstds,
+                        ATTENDANCE_FILE)
 
     print "Running ... "
-    pairing = good_pairing(hist, student_topics.keys(), tutors, student_topics, params)
+    pairing = good_pairing(hist, student_topics.keys(), tutors,
+                           student_topics, params)
     # get score
-    (score, annotations) = get_score(pairing, hist, student_topics, params=params)
+    (score, annotations) = get_score(pairing, hist, student_topics,
+                                     params=params)
     # output to a file
     PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations,
                        score=score, date=date)
@@ -271,6 +269,9 @@ def save_pairing():
     alltuts = Tutors().from_csv(TUTOR_FILE)
     PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
     hist = HistoricalData().from_csv(HIST_FILE)
+    # XXX Should we remove from the historical data any existing pairs
+    # for this date?  We can get the date from any of the pairs read
+    # from the PairingFile.
     hist.add_list(pairs)
     with open(HIST_FILE, 'w') as fd:
         fd.write(hist.to_csv())
@@ -283,12 +284,14 @@ def score_pairing():
     alltuts = Tutors().from_csv(TUTOR_FILE)
     params = ScoreParams.from_csv(PARAM_FILE)
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
-    Attendance.validate(tutors, student_topics, alltuts, allstds, ATTENDANCE_FILE)
+    Attendance.validate(tutors, student_topics, alltuts, allstds,
+                        ATTENDANCE_FILE)
     session = os.path.basename(os.path.abspath(os.path.curdir))
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
     pairing = [(pair.tutor, pair.student) for pair in pairs]
-    (score, annotations) = get_score(pairing, hist, student_topics, params=params)
+    (score, annotations) = get_score(pairing, hist, student_topics,
+                                     params=params)
     PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations,
                        score=score, date=date)
 
@@ -434,7 +437,8 @@ class SpellChecker(object):
     def __init__(self, wordlist, alphabet=None):
         self.nwords = self.train(wordlist)
         if alphabet is None:
-            alphabet = 'abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ |.'
+            alphabet = ('abcdefghijklmnopqrstuvwxyz_'
+                        'ABCDEFGHIJKLMNOPQRSTUVWXYZ |.')
         self.alphabet = alphabet
 
     def edits1(self, word):
@@ -534,7 +538,8 @@ class CsvObject(object):
         that is equivalent to self
         """
         return ('{cn}(' + 
-                ',\n{pd} '.join('{0} = {{self.{0}!r}}'.format(f) for f in self.FIELDS) +
+                ',\n{pd} '.join('{0} = {{self.{0}!r}}'.format(f)
+                                for f in self.FIELDS) +
                 ')').format(cn=self.__class__.__name__,
                             pd=' ' * len(self.__class__.__name__),
                             self=self)
@@ -592,7 +597,7 @@ class Pair(CsvObject):
     # Instead of avoid_student being a boolean, should it be a list of
     # the names students to avoid?
     BOOL_FIELDS = ('tutor_on_own', 'on_own', 'avoid_student',
-                   'avoid_tutor', 'good_match')
+                   'avoid_tutor', 'good_tutor_match', 'good_student_match')
     FIELDS = INT_FIELDS + STR_FIELDS + BOOL_FIELDS
     DEFAULTS = {'topic' : ''}
 
@@ -880,7 +885,7 @@ class Attendance(object):
             if date is not None:
                 fd.write(','.join(('Date', date)))
                 fd.write("\n")
-            fd.write(','.join(('Tutor', '', 'Student', '', 'Topic')))
+            fd.write(','.join(('Tutor', 'HERE', 'Student', 'HERE', 'Topic')))
             fd.write("\n")
             for (student, tutor) in itertools.izip_longest(
                     students.get_matches(is_active=True),
@@ -925,7 +930,8 @@ class Attendance(object):
         return (tutors, student_topics, date)
 
     @classmethod
-    def validate(cls, tutors_present, student_topics, alltutors, allstudents, filename):
+    def validate(cls, tutors_present, student_topics, alltutors,
+                 allstudents, filename):
         valid = True
         # Confirm that these are recognized tutors and students
         for tutor in tutors_present:
@@ -949,7 +955,8 @@ class Attendance(object):
 
 class PairingFile(object):
     @classmethod
-    def to_csv(cls, filename, pairing, student_topics, annotations, score=None, date=None):
+    def to_csv(cls, filename, pairing, student_topics, annotations,
+               score=None, date=None):
         with open(filename, 'w') as fd:
             if date is not None:
                 fd.write(','.join(('Date', date)))
@@ -959,7 +966,8 @@ class PairingFile(object):
                 fd.write("\n")
             fd.write(','.join(('Tutor', 'Student',
                                'Topic', 'TUTOR_ON_OWN', 'STUDENT_ON_OWN',
-                               'AVOID_TUTOR', 'AVOID_STUDENT', 'GOOD_MATCH',
+                               'AVOID_TUTOR', 'AVOID_STUDENT',
+                               'GOOD_TUTOR_MATCH', 'GOOD_STUDENT_MATCH',
                                'Score', 'Reason',)))
             fd.write("\n")
             by_tutor = HistoricalData.pairing_by_tutor(pairing)
@@ -968,11 +976,13 @@ class PairingFile(object):
                     score = (sum(a[0] for a in annotations[(tutor, student)])
                              if (tutor, student) in annotations
                              else 0)
-                    ann = (' | '.join(a[1] for a in annotations[(tutor, student)])
+                    ann = (' | '.join(a[1]
+                                      for a in annotations[(tutor, student)])
                            if (tutor, student) in annotations
                            else '')
                     fd.write(','.join((tutor, student, student_topics[student],
-                                       '', '', '', '', '', str(score), ann)))
+                                       '', '', '', '', '', '',
+                                       str(score), ann)))
                     fd.write("\n")
 
     @classmethod
@@ -994,11 +1004,11 @@ class PairingFile(object):
                     continue
                 vals = line.split(',')
                 if len(vals) != 8 and len(vals) != 10:
-                    raise ValueError("Invalid pairing, wrong number of fields: {0}".
-                                     format(line))
+                    raise ValueError("Invalid pairing, wrong number of "
+                                     "fields: {0}".format(line))
                 (tutor, student, topic, tutor_on_own,
                  student_on_own, avoid_tutor, avoid_student,
-                 good_match) = vals[:8]
+                 good_tutor_match, good_student_match) = vals[:8]
                 # XXX get the columns from the header?
                 pairing.append(Pair(from_csv=True,
                                     date=date,
@@ -1010,14 +1020,16 @@ class PairingFile(object):
                                     on_own=student_on_own,
                                     avoid_student=avoid_student,
                                     avoid_tutor=avoid_tutor,
-                                    good_match=good_match))
+                                    good_tutor_match=good_tutor_match,
+                                    good_student_match=good_student_match))
         return pairing
 
     @classmethod
     def validate(cls, pairs, all_students, all_tutors, all_topics):
         valid = True
         for pair in pairs:
-            if not pair.validate(all_students, all_tutors, all_topics, throw=False):
+            if not pair.validate(all_students, all_tutors, all_topics,
+                                 throw=False):
                 valid = False
         if not valid:
             raise ValueError("Errors in pairing file, aborting...")
@@ -1151,7 +1163,7 @@ class ParseManualFile(object):
                          good_match) = cls.parse_student(student)
                         # Sanity Check
                         if any([student.lower().find(mark.lower()) >= 0
-                                for mark in ('OO', ' X ', ':-)', '*')]):
+                                for mark in ('OO', ' X ', ':-)', '*', '=)')]):
                             logging.info('Missed one? "{0}" -- {1}, {2} '
                                          '{3} {4} {5}'.
                                          format(student, val, session,
@@ -1164,26 +1176,31 @@ class ParseManualFile(object):
                                          on_own=on_own,
                                          avoid_student=avoid_student,
                                          avoid_tutor=avoid_tutor,
-                                         good_match=good_match))
+                                         good_student_match=good_match))
                 last_fld = fld
         return data
 
 def get_2012_data():
     currentdir = os.path.dirname(
         os.path.abspath(inspect.getfile(inspect.currentframe())))
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(currentdir)), 'data', '2012')
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(currentdir)),
+                            'data', '2012')
     data = []
-    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am_purple.csv'),
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir,
+                                                       'am_purple.csv'),
                                           'am_purple', 2012))
-    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am_orange.csv'),
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir,
+                                                       'am_orange.csv'),
                                           'am_orange', 2012))
-    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'pm.csv'), 'pm', 2012))
+    data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'pm.csv'),
+                                          'pm', 2012))
     return HistoricalData(data)
 
 def get_2013_data():
     currentdir = os.path.dirname(
         os.path.abspath(inspect.getfile(inspect.currentframe())))
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(currentdir)), 'data', '2013')
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(currentdir)),
+                            'data', '2013')
     data = []
     data.extend(ParseManualFile.read_file(os.path.join(data_dir, 'am.csv'),
                                           'am', 2013))
@@ -1197,9 +1214,10 @@ def get_2013_data():
 
 class ScoreParams(object):
     PARAMS = {'award_past_work'          : 1,
-              'award_good_match'         : 5,
+              'award_good_tutor_match'   : 5,
+              'award_good_student_match' : 5,
               'penalty_avoid_tutor'      : 20,
-              'penalty_multiple_students': 1,
+              'penalty_multiple_students': 3,
               'penalty_avoid_student'    : 20,
               'penalty_tutor_on_own'     : 10,
               'penalty_student_on_own'   : 10,
@@ -1282,15 +1300,15 @@ def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
                 (-params.penalty_avoid_tutor,
                   "-{0} because {1} and {2} shouldn't work together".
                   format(params.penalty_avoid_tutor, tutor, student)))
-        if any([p.good_match for p in prev]):
-            score += params.award_good_match
+        if any([p.good_tutor_match for p in prev]):
+            score += params.award_good_tutor_match
             logging.debug("Score %s: Increasing score by %s because %s is a "
                           "good fit with tutor %s",
-                          score, params.award_good_match, student, tutor)
+                          score, params.award_good_tutor_match, student, tutor)
             annotations[(tutor, student)].append(
-                (params.award_good_match,
+                (params.award_good_tutor_match,
                  "+{0} because {1} and {2} are a good match".
-                 format(params.award_good_match, tutor, student)))
+                 format(params.award_good_tutor_match, tutor, student)))
 
     n_students = len(students)
     if n_students < 2:
@@ -1341,8 +1359,9 @@ def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
                   format(params.penalty_tutor_on_own, student)))
     for ii in xrange(n_students):
         for jj in xrange(ii+1, n_students):
-            for pairs in hist.get_student_pairings(students[ii],
-                                                   students[jj]):
+            hist_pairs = hist.get_student_pairings(students[ii],
+                                                   students[jj])
+            for pairs in hist_pairs:
                 if any([p.avoid_student for p in pairs]):
                     score -= params.penalty_avoid_student
                     logging.debug("Score %s: Decreasing score by %s "
@@ -1357,6 +1376,22 @@ def get_group_score(hist, tutor, students, topics, params=None, **kwargs):
                           format(params.penalty_avoid_student,
                                  students[ii],
                                  students[jj])))
+                    break
+            for pairs in hist_pairs:
+                if any([p.good_student_match for p in pairs]):
+                    score += params.award_good_student_match
+                    logging.debug("Score %s: Increasing score by %s "
+                                  "because student %s "
+                                  "is a good match with student %s",
+                                  score, params.award_good_student_match,
+                                  students[ii], students[jj])
+                    annotations[(tutor, students[ii])].append(
+                        (params.award_good_student_match,
+                         "-{0} because student {1} is a good match with "
+                         "student {2}".
+                         format(params.penalty_avoid_student,
+                                students[ii],
+                                students[jj])))
                     break
     return (score, annotations)
 
