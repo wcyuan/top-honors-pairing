@@ -419,6 +419,8 @@ def log_to_file(file=LOG_FILE):
 def get_session_from_cwd():
     return os.path.basename(os.path.abspath(os.path.curdir))
 
+def get_today():
+    return int(datetime.date.today().strftime('%Y%m%d'))
 
 # -------------------------------------------------------
 
@@ -992,7 +994,7 @@ class PairingFile(object):
     @classmethod
     def from_csv(cls, filename, session):
         pairing = []
-        date = int(datetime.date.today().strftime('%Y%m%d'))
+        date = get_today()
         with open(filename) as fd:
             header = None
             for line in fd:
