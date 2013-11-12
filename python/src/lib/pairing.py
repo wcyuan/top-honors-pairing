@@ -257,13 +257,13 @@ def run_pairing():
                        score=score, date=date)
 
     # validate what we just wrote
-    session = os.path.basename(os.path.abspath(os.path.curdir))
+    session = get_session_from_cwd()
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
 
 @from_windows
 def save_pairing():
-    session = os.path.basename(os.path.abspath(os.path.curdir))
+    session = get_session_from_cwd()
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     allstds = Students().from_csv(STUDENT_FILE)
     alltuts = Tutors().from_csv(TUTOR_FILE)
@@ -286,7 +286,7 @@ def score_pairing():
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
     Attendance.validate(tutors, student_topics, alltuts, allstds,
                         ATTENDANCE_FILE)
-    session = os.path.basename(os.path.abspath(os.path.curdir))
+    session = get_session_from_cwd()
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
     pairing = [(pair.tutor, pair.student) for pair in pairs]
@@ -415,6 +415,10 @@ def log_to_file(file=LOG_FILE):
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter(LOG_FORMAT))
     logger.addHandler(fh)
+
+def get_session_from_cwd():
+    return os.path.basename(os.path.abspath(os.path.curdir))
+
 
 # -------------------------------------------------------
 
