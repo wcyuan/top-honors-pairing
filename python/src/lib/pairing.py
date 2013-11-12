@@ -67,7 +67,7 @@ HistoricalData is the set of all past Pairings.
      separate main from functions)
  [ ] add comments, docstrings
 
- - maybe/somday?
+ - maybe/someday?
  python gui?
  http://farhadi.ir/projects/html5sortable/
 
@@ -99,6 +99,7 @@ ATTENDANCE_FILE = 'Attendance.csv'
 
 # Output
 PAIRING_FILE = 'Pairing.csv'
+ACTUAL_PAIRING_FILE = 'ActualPairing.csv'
 
 # Auxiliary Data
 STUDENT_FILE = os.path.join('data', 'Students.csv')
@@ -301,6 +302,18 @@ def score_pairing():
     PairingFile.to_csv(PAIRING_FILE, pairing, student_topics, annotations,
                        score=score, date=date)
 
+@from_windows
+def score_historical_pairing(date=20131109):
+    hist = HistoricalData().from_csv(HIST_FILE)
+    params = ScoreParams.from_csv(PARAM_FILE)
+    session = get_session_from_cwd()
+    (score, annotations) = score_historical(hist, date, session,
+                                            params=params)
+
+    (pairing, student_topics) = hist.get_pairing(date, session)
+    PairingFile.to_csv(ACTUAL_PAIRING_FILE, pairing, student_topics, annotations,
+                       score=score, date=date)
+
 # -------------------------------------------------------
 # These functions capture the real main code.  Main is just a switch
 # around either run_pairing_code or make_files
@@ -357,12 +370,10 @@ def run_pairing_code(date=20130413,
     print "Calculating ... "
     print
 
-    actual = hist.get_pairing(date, session)
+    (actual, student_topics) = hist.get_pairing(date, session)
     (actual_score, actual_ann) = score_historical(hist, date, session, params)
 
     best = good_historical_score(hist, date, session, params)
-    recent = hist.most_recent(by_student=True, date=date)
-    student_topics = dict((s, recent[s].topic) for s in recent)
     (best_score, best_ann) = get_score(
         best, hist.get_data_before(date, session),
         student_topics)
@@ -766,9 +777,13 @@ class HistoricalData(CsvList):
         return self.data_by_key
 
     def get_pairing(self, date, session):
-        return [(d.tutor, d.student)
-                for d in self.data
-                if d.date == date and d.session == session]
+        pairing = [(d.tutor, d.student)
+                   for d in self.data
+                   if d.date == date and d.session == session]
+        student_topics = dict((d.student, d.topic)
+                              for d in self.data
+                              if d.date == date and d.session == session)
+        return (pairing, student_topics)
 
     def get_data_before(self, date, session):
         return HistoricalData([d for d in self.data
@@ -897,7 +912,7 @@ class Attendance(object):
         recent = hist.most_recent(by_student=True, date=date)
         with open(filename, 'w') as fd:
             if date is not None:
-                fd.write(','.join(('Date', date)))
+                fd.write(','.join(('Date', str(date))))
                 fd.write("\n")
             fd.write(','.join(('Tutor', 'HERE', 'Student', 'HERE', 'Topic')))
             fd.write("\n")
@@ -981,7 +996,7 @@ class PairingFile(object):
             date = get_today()
         with open(filename, 'w') as fd:
             if date is not None:
-                fd.write(','.join(('Date', date)))
+                fd.write(','.join(('Date', str(date))))
                 fd.write("\n")
             if score is not None:
                 fd.write(','.join(('Score', str(score))))
@@ -1239,7 +1254,7 @@ class ScoreParams(object):
               'award_good_tutor_match'   : 5,
               'award_good_student_match' : 5,
               'penalty_avoid_tutor'      : 20,
-              'penalty_multiple_students': 3,
+              'penalty_multiple_students': 1,
               'penalty_avoid_student'    : 20,
               'penalty_tutor_on_own'     : 10,
               'penalty_student_on_own'   : 10,
@@ -1468,10 +1483,8 @@ def get_score(pairing, hist, student_topics, params=None, **kwargs):
     return score, annotations
 
 def score_historical(hist, date, session, params=None):
-    actual = hist.get_pairing(date, session)
+    (actual, student_topics) = hist.get_pairing(date, session)
     past_data = hist.get_data_before(date, session)
-    recent = hist.most_recent(by_student=True, date=date)
-    student_topics = dict((s, recent[s].topic) for s in recent)
     return get_score(actual, past_data, student_topics, params)
 
 # --------------------------------------------------------------------
@@ -1512,12 +1525,10 @@ def good_pairing(hist, students, tutors, student_topics, params=None):
     return pairing
 
 def good_historical_score(hist, date, session, params=None):
-    actual = hist.get_pairing(date, session)
+    (actual, student_topics) = hist.get_pairing(date, session)
     students = set([p[1] for p in actual])
     tutors = set([p[0] for p in actual if p[0].strip() != ''])
     past_data = hist.get_data_before(date, session)
-    recent = hist.most_recent(by_student=True, date=date)
-    student_topics = dict((s, recent[s].topic) for s in recent)
     return good_pairing(past_data, students, tutors, student_topics, params)
 
 # --------------------------------------------------------------------
