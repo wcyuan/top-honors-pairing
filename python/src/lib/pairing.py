@@ -62,6 +62,7 @@ HistoricalData is the set of all past Pairings.
  [ ] add tests
      - dump and restore files
      - score scenarios
+     - validate sessions?
  [ ] clean up code organization (break into several files,
      separate main from functions)
  [ ] add comments, docstrings
@@ -122,6 +123,11 @@ ALL_TOPICS   = (('NUMBERS', '#', '#S'),
                 ('ALGEBRA', 'ALG', 'ALGB'),
                 # XXX allow blank topics for historical mode
                 ('',))
+
+VALID_TRUE_VALUES = ('TRUE', 'T', 'YES', 'Y')
+VALID_FALSE_VALUES = ('', 'FALSE', 'F', 'NO', 'N')
+VALID_HERE_VALUES = VALID_TRUE_VALUES + ('HERE',)
+VALID_NOT_HERE_VALUES = VALID_FALSE_VALUES
 
 LOG_FORMAT   = ('[%(asctime)s '
                 '%(funcName)s:%(lineno)s %(levelname)-5s] '
@@ -242,7 +248,8 @@ def run_pairing():
     hist.validate(allstds, alltuts)
     params = ScoreParams.from_csv(PARAM_FILE)
     (tutors, student_topics, date) = Attendance.from_csv(ATTENDANCE_FILE)
-    # XXX should we use the date to restrict the historical data?
+    session = get_session_from_cwd()
+    hist = hist.get_data_before(date, session)
     Attendance.validate(tutors, student_topics, alltuts, allstds,
                         ATTENDANCE_FILE)
 
@@ -257,7 +264,6 @@ def run_pairing():
                        score=score, date=date)
 
     # validate what we just wrote
-    session = get_session_from_cwd()
     pairs = PairingFile.from_csv(PAIRING_FILE, session)
     PairingFile.validate(pairs, allstds, alltuts, ALL_TOPICS)
 
@@ -576,7 +582,9 @@ class CsvObject(object):
     @classmethod
     def from_csv_field(cls, fld, val):
         if fld in cls.BOOL_FIELDS:
-            return val == 'TRUE'
+            if val.upper() not in VALID_TRUE_VALUES + VALID_FALSE_VALUES:
+                raise ValueError("Invalid boolean value: {0}".format(val))
+            return val.upper() in VALID_TRUE_VALUES
         if fld in cls.INT_FIELDS:
             return int(val)
         return val
@@ -904,7 +912,7 @@ class Attendance(object):
 
     @classmethod
     def not_present(cls, string):
-        return string.lower() in ('', 'no', 'false', 'n')
+        return string.upper() in VALID_FALSE_VALUES
 
     @classmethod
     def from_csv(cls, filename):
@@ -926,11 +934,17 @@ class Attendance(object):
                 if tutor in tutors:
                     raise ValueError("Tutor {0} appears multiple times!".
                                      format(tutor))
+                if tutor_present not in VALID_HERE_VALUES + VALID_NOT_HERE_VALUES:
+                    raise ValueError("Can't tell if {0} is present from \"{1}\"".
+                                     format(tutor, tutor_present))
                 if not cls.not_present(tutor_present):
                     tutors.append(tutor)
                 if student in student_topics:
                     raise ValueError("Student {0} appears multiple times!".
                                      format(student))
+                if student_present not in VALID_HERE_VALUES + VALID_NOT_HERE_VALUES:
+                    raise ValueError("Can't tell if {0} is present from \"{1}\"".
+                                     format(student, student_present))
                 if not cls.not_present(student_present):
                     student_topics[student] = topic
         return (tutors, student_topics, date)
@@ -963,6 +977,8 @@ class PairingFile(object):
     @classmethod
     def to_csv(cls, filename, pairing, student_topics, annotations,
                score=None, date=None):
+        if date is None:
+            date = get_today()
         with open(filename, 'w') as fd:
             if date is not None:
                 fd.write(','.join(('Date', date)))
